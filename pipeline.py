@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 # ── Tunable constants (mirror Test_1.ipynb exactly) ───────────────────────
 MIN_DEFECT_AREA    = 50        # px² — ignore contours smaller than this
-INNER_RADIUS_RATIO = 0.5       # fraction of pipe radius to inspect
+INNER_RADIUS_RATIO = 0.8       # fraction of pipe radius to inspect
 JPEG_QUALITY       = 85        # inspection frame JPEG quality
 SIGNIFICANT_AREA   = MIN_DEFECT_AREA * 10   # area → max confidence (~500 px²)
 CAPTURE_DELAY      = 0.3       # seconds to wait after trigger (pipe settles)
