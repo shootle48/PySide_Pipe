@@ -296,6 +296,7 @@ class CameraWorker(QThread):
             confidence = result["confidence"],
             timestamp  = timestamp,
             detections = result["detections"],
+            image_b64  = result.get("image_b64", "") if result["verdict"] == "NG" else "",
         )
 
         payload = {
@@ -452,6 +453,7 @@ class CameraWorker(QThread):
             confidence = result["confidence"],
             timestamp  = timestamp,
             detections = result["detections"],
+            image_b64  = result.get("image_b64", "") if result["verdict"] == "NG" else "",
         )
 
         payload = {

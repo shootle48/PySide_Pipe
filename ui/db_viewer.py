@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore    import Qt, QThread, Signal, Slot
-from PySide6.QtGui     import QColor, QFont
+from PySide6.QtGui     import QColor, QFont, QImage, QPixmap
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QMessageBox, QPushButton, QSplitter,
@@ -49,6 +49,7 @@ class DbViewerDialog(QDialog):
         super().__init__(parent)
         self._db             = db
         self._current_batch  = None   # currently selected batch id
+        self._row_images:    list[str] = []   # image_b64 per table row (index-aligned)
 
         self.setWindowTitle("Database Viewer")
         self.resize(1100, 660)
@@ -119,7 +120,7 @@ class DbViewerDialog(QDialog):
 
         return panel
 
-    # ── Right: inspection table ─────────────────────────────────────────
+    # ── Right: inspection table + image preview ─────────────────────────
 
     def _build_inspection_panel(self) -> QWidget:
         panel = QWidget()
@@ -131,7 +132,12 @@ class DbViewerDialog(QDialog):
         label.setObjectName("sectionTitle")
         layout.addWidget(label)
 
-        # Table
+        # Vertical splitter: table (top) / image preview (bottom)
+        v_split = QSplitter(Qt.Vertical)
+        v_split.setHandleWidth(1)
+        v_split.setChildrenCollapsible(False)
+
+        # ── Table ──────────────────────────────────────────────────────
         self._table = QTableWidget()
         self._table.setObjectName("inspectionTable")
         self._table.setColumnCount(5)
@@ -147,7 +153,41 @@ class DbViewerDialog(QDialog):
         self._table.setColumnWidth(1, 80)
         self._table.setColumnWidth(2, 100)
         self._table.setColumnWidth(3, 120)
-        layout.addWidget(self._table, stretch=1)
+        self._table.itemSelectionChanged.connect(self._on_row_selected)
+        v_split.addWidget(self._table)
+
+        # ── Image preview ───────────────────────────────────────────────
+        preview_panel = QWidget()
+        preview_panel.setObjectName("previewPanel")
+        preview_layout = QVBoxLayout(preview_panel)
+        preview_layout.setContentsMargins(0, 6, 0, 0)
+        preview_layout.setSpacing(4)
+
+        title_row = QHBoxLayout()
+        preview_title = QLabel("NG IMAGE PREVIEW")
+        preview_title.setObjectName("sectionTitle")
+        title_row.addWidget(preview_title)
+        title_row.addStretch()
+        self._fullscreen_btn = QPushButton("⛶  ขยาย")
+        self._fullscreen_btn.setObjectName("secondaryBtn")
+        self._fullscreen_btn.setFixedHeight(22)
+        self._fullscreen_btn.setEnabled(False)
+        self._fullscreen_btn.clicked.connect(self._open_fullscreen)
+        title_row.addWidget(self._fullscreen_btn)
+        preview_layout.addLayout(title_row)
+
+        self._preview_label = QLabel()
+        self._preview_label.setObjectName("imagePreview")
+        self._preview_label.setAlignment(Qt.AlignCenter)
+        self._preview_label.setText("— เลือก row ที่เป็น NG เพื่อดูภาพ —")
+        self._preview_label.setMinimumHeight(160)
+        preview_layout.addWidget(self._preview_label, stretch=1)
+
+        self._current_pixmap: Optional[QPixmap] = None
+
+        v_split.addWidget(preview_panel)
+        v_split.setSizes([340, 200])
+        layout.addWidget(v_split, stretch=1)
 
         # Stats + export bar
         bottom = QHBoxLayout()
@@ -205,6 +245,7 @@ class DbViewerDialog(QDialog):
         rows = self._db.get_recent_inspections(batch_id, limit=500)
 
         self._table.setRowCount(0)
+        self._row_images = []   # reset parallel image list
         total = len(rows)
         ng    = sum(1 for r in rows if r["verdict"] == "NG")
 
@@ -244,6 +285,9 @@ class DbViewerDialog(QDialog):
                 pass
             self._set_cell(row_idx, 4, ts)
 
+            # Store image_b64 parallel to row index
+            self._row_images.append(row_data.get("image_b64") or "")
+
         # Update stats bar
         self._stat_total.setText(f"Total: {total}")
         self._stat_ng.setText(f"NG: {ng}")
@@ -258,6 +302,71 @@ class DbViewerDialog(QDialog):
     # ══════════════════════════════════════════════════════════════════════
     # Slots
     # ══════════════════════════════════════════════════════════════════════
+
+    @Slot()
+    def _on_row_selected(self) -> None:
+        """แสดง NG image เมื่อ user คลิก row ในตาราง"""
+        selected = self._table.selectedItems()
+        if not selected:
+            return
+        row_idx = self._table.row(selected[0])
+        if row_idx >= len(self._row_images):
+            return
+
+        b64 = self._row_images[row_idx]
+        if not b64:
+            self._current_pixmap = None
+            self._fullscreen_btn.setEnabled(False)
+            self._preview_label.setPixmap(QPixmap())
+            self._preview_label.setText("— ไม่มีภาพ (OK result หรือบันทึกก่อนอัปเดต) —")
+            return
+
+        img_bytes = __import__('base64').b64decode(b64)
+        qimage    = QImage.fromData(img_bytes)
+        self._current_pixmap = QPixmap.fromImage(qimage)
+        self._fullscreen_btn.setEnabled(True)
+        self._preview_label.setPixmap(
+            self._current_pixmap.scaled(
+                self._preview_label.width(),
+                self._preview_label.height(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+
+    @Slot()
+    def _open_fullscreen(self) -> None:
+        """เปิดภาพเต็มจอใน QDialog แยก"""
+        if self._current_pixmap is None:
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("NG Image — Fullscreen")
+        dlg.showMaximized()
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        img_label = QLabel()
+        img_label.setAlignment(Qt.AlignCenter)
+        img_label.setStyleSheet("background: #0d0f14;")
+        screen = dlg.screen().availableGeometry()
+        img_label.setPixmap(
+            self._current_pixmap.scaled(
+                screen.width(), screen.height(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+        layout.addWidget(img_label)
+
+        close_btn = QPushButton("✕  ปิด  (หรือกด Esc)")
+        close_btn.setObjectName("secondaryBtn")
+        close_btn.setFixedHeight(36)
+        close_btn.clicked.connect(dlg.close)
+        layout.addWidget(close_btn)
+
+        dlg.exec()
 
     @Slot()
     def _on_batch_selected(self, current, previous) -> None:
@@ -419,6 +528,20 @@ class DbViewerDialog(QDialog):
                 background: #1c1f2e;
                 color: #e8eaf0;
                 border-color: #3a4060;
+            }
+
+            /* Image preview */
+            #previewPanel {
+                background: #141720;
+                border: 1px solid #2a2f45;
+                border-radius: 6px;
+                padding: 4px;
+            }
+            #imagePreview {
+                background: #0d0f14;
+                border-radius: 4px;
+                color: #4a5070;
+                font-size: 11px;
             }
 
             /* Splitter */

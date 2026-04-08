@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS inspections (
     verdict     TEXT    NOT NULL CHECK(verdict IN ('OK', 'NG')),
     confidence  REAL    NOT NULL,
     timestamp   TEXT    NOT NULL,
-    detections  TEXT    NOT NULL DEFAULT '[]'
+    detections  TEXT    NOT NULL DEFAULT '[]',
+    image_b64   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_inspections_batch
@@ -73,7 +74,13 @@ class DatabaseManager:
     def _create_schema(self) -> None:
         with self._lock:
             self._conn.executescript(_DDL)
-            self._conn.commit()
+            # Migration: add image_b64 to existing DB that predates this column
+            try:
+                self._conn.execute("ALTER TABLE inspections ADD COLUMN image_b64 TEXT")
+                self._conn.commit()
+                logger.info("Migration: added image_b64 column to inspections.")
+            except Exception:
+                pass  # column already exists — ปกติ
 
     # ── Batch operations ───────────────────────────────────────────────────
 
@@ -131,17 +138,18 @@ class DatabaseManager:
         confidence: float,
         timestamp: str,
         detections: list,
+        image_b64: str = "",
     ) -> None:
         with self._lock:
             self._conn.execute(
                 """
                 INSERT INTO inspections
-                    (piece_id, batch_id, verdict, confidence, timestamp, detections)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (piece_id, batch_id, verdict, confidence, timestamp, detections, image_b64)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     piece_id, batch_id, verdict, confidence, timestamp,
-                    json.dumps(detections),
+                    json.dumps(detections), image_b64,
                 ),
             )
             self._conn.commit()
@@ -151,7 +159,7 @@ class DatabaseManager:
         with self._lock:
             rows = self._conn.execute(
                 """
-                SELECT piece_id, verdict, confidence, timestamp, detections
+                SELECT piece_id, verdict, confidence, timestamp, detections, image_b64
                 FROM   inspections
                 WHERE  batch_id = ?
                 ORDER  BY id DESC
