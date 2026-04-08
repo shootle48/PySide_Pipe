@@ -1,0 +1,9 @@
+PySide6>=6.6.0
+opencv-python>=4.9.0
+numpy>=1.24.0
+
+# On Jetson Orin Nano — do NOT pip install opencv-python
+# Use system OpenCV instead:
+#   sudo apt install python3-opencv
+# Then install only:
+#   pip install PySide6 numpy
