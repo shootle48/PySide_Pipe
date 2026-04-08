@@ -86,6 +86,7 @@ class MainWindow(QMainWindow):
 
         # ── Backend singletons ─────────────────────────────────────────────
         self._db          = DatabaseManager()
+        self._db.cleanup_old_data()   # cleanup ทุกครั้งที่เปิดโปรแกรม
         self._batch_state = BatchStateManager(db=self._db)
         self._worker      = CameraWorker(
             batch_state    = self._batch_state,

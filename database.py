@@ -251,6 +251,23 @@ class DatabaseManager:
         """
         self._cleanup_by_age()
         self._cleanup_by_size()
+        self._recalculate_all_batch_counters()
+
+    def _recalculate_all_batch_counters(self) -> None:
+        """Sync batches.total / batches.ng ให้ตรงกับ inspections จริงหลัง cleanup."""
+        with self._lock:
+            self._conn.execute(
+                """
+                UPDATE batches SET
+                    total = (SELECT COUNT(*)
+                             FROM inspections WHERE batch_id = batches.id),
+                    ng    = (SELECT COUNT(*)
+                             FROM inspections
+                             WHERE batch_id = batches.id AND verdict = 'NG')
+                """
+            )
+            self._conn.commit()
+        logger.info("Recalculated all batch counters after cleanup.")
 
     def _cleanup_by_age(self) -> None:
         cutoff = (
