@@ -13,12 +13,18 @@ import json
 import logging
 import sqlite3
 import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(__file__).parent / "data" / "pipe_inspector.db"
+
+# ── Storage Threshold Config ───────────────────────────────────────────────
+MAX_RECORD_AGE_DAYS = 90     # ลบ record ที่เก่ากว่า 3 เดือน
+MAX_DB_SIZE_MB      = 32_768  # 32 GB — ถ้า DB ใหญ่กว่านี้ → cleanup
+CLEANUP_KEEP_RATIO  = 0.60   # เก็บ 60% ใหม่สุด, ลบ 40% เก่าสุด
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS batches (
@@ -79,8 +85,10 @@ class DatabaseManager:
                 self._conn.execute("ALTER TABLE inspections ADD COLUMN image_b64 TEXT")
                 self._conn.commit()
                 logger.info("Migration: added image_b64 column to inspections.")
-            except Exception:
-                pass  # column already exists — ปกติ
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower() and "already exists" not in str(e).lower():
+                    logger.error(f"Migration failed unexpectedly: {e}")
+                    raise
 
     # ── Batch operations ───────────────────────────────────────────────────
 
@@ -178,6 +186,113 @@ class DatabaseManager:
                 "SELECT id, started_at, ended_at, total, ng, is_active FROM batches ORDER BY started_at DESC"
             ).fetchall()
         return [dict(row) for row in rows]
+
+    # ── CRUD — Delete / Update ─────────────────────────────────────────────
+
+    def delete_inspection(self, piece_id: str) -> None:
+        """ลบ inspection record เดียว (รวมรูป)"""
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM inspections WHERE piece_id = ?", (piece_id,)
+            )
+            self._conn.commit()
+        logger.info(f"Deleted inspection: {piece_id}")
+
+    def recalculate_batch_counters(self, batch_id: str) -> tuple[int, int]:
+        """Recount total/NG จาก inspections จริง แล้ว sync กลับ batches table.
+        Returns (total, ng) ใหม่."""
+        with self._lock:
+            row = self._conn.execute(
+                """
+                SELECT COUNT(*) AS total,
+                       SUM(CASE WHEN verdict = 'NG' THEN 1 ELSE 0 END) AS ng
+                FROM inspections WHERE batch_id = ?
+                """,
+                (batch_id,),
+            ).fetchone()
+            total = row["total"] or 0
+            ng    = int(row["ng"] or 0)
+            self._conn.execute(
+                "UPDATE batches SET total = ?, ng = ? WHERE id = ?",
+                (total, ng, batch_id),
+            )
+            self._conn.commit()
+        logger.info(f"Recalculated batch {batch_id}: total={total} ng={ng}")
+        return total, ng
+
+    def delete_batch_inspections(self, batch_id: str) -> None:
+        """ลบทุก inspection record และ batch record ออกทั้งหมด"""
+        with self._lock:
+            deleted = self._conn.execute(
+                "DELETE FROM inspections WHERE batch_id = ?", (batch_id,)
+            ).rowcount
+            self._conn.execute(
+                "DELETE FROM batches WHERE id = ?", (batch_id,)
+            )
+            self._conn.commit()
+        logger.info(f"Deleted batch {batch_id} and {deleted} inspections")
+
+    def clear_image_b64(self, piece_id: str) -> None:
+        """เคลียร์เฉพาะรูป — เก็บ metadata (verdict/timestamp/detections) ไว้"""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE inspections SET image_b64 = '' WHERE piece_id = ?", (piece_id,)
+            )
+            self._conn.commit()
+        logger.info(f"Cleared image for: {piece_id}")
+
+    # ── Storage cleanup ────────────────────────────────────────────────────
+
+    def cleanup_old_data(self) -> None:
+        """
+        เรียกหลัง save_inspection() ทุกครั้ง
+        Rule 1 — Age  : ลบ record เก่ากว่า MAX_RECORD_AGE_DAYS
+        Rule 2 — Size : ถ้า DB > MAX_DB_SIZE_MB → ลบ 40% เก่าสุด เก็บ 60% ใหม่สุด
+        """
+        self._cleanup_by_age()
+        self._cleanup_by_size()
+
+    def _cleanup_by_age(self) -> None:
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=MAX_RECORD_AGE_DAYS)
+        ).isoformat()
+        with self._lock:
+            deleted = self._conn.execute(
+                "DELETE FROM inspections WHERE timestamp < ?", (cutoff,)
+            ).rowcount
+            if deleted:
+                self._conn.commit()
+                logger.info(
+                    f"Cleanup [age]: removed {deleted} records "
+                    f"older than {MAX_RECORD_AGE_DAYS} days."
+                )
+
+    def _cleanup_by_size(self) -> None:
+        db_mb = self._db_path.stat().st_size / (1024 * 1024)
+        if db_mb <= MAX_DB_SIZE_MB:
+            return
+
+        with self._lock:
+            total = self._conn.execute(
+                "SELECT COUNT(*) FROM inspections"
+            ).fetchone()[0]
+            delete_count = int(total * (1 - CLEANUP_KEEP_RATIO))   # 40%
+            if delete_count <= 0:
+                return
+            self._conn.execute(
+                """
+                DELETE FROM inspections WHERE id IN (
+                    SELECT id FROM inspections ORDER BY id ASC LIMIT ?
+                )
+                """,
+                (delete_count,),
+            )
+            self._conn.commit()
+            self._conn.execute("VACUUM")   # คืน disk space จริง
+            logger.info(
+                f"Cleanup [size]: DB was {db_mb:.1f} MB, "
+                f"removed {delete_count} oldest records (kept {CLEANUP_KEEP_RATIO:.0%})."
+            )
 
     def close(self) -> None:
         try:

@@ -98,6 +98,7 @@ class MainWindow(QMainWindow):
         # ── State ──────────────────────────────────────────────────────────
         self._in_result_view  = False
         self._upload_mode     = False   # True = Upload Image mode, False = Camera mode
+        self._file_inspecting = False   # guard: ป้องกัน inspect_file() วิ่ง parallel
         self._result_timer    = QTimer(self)
         self._result_timer.setSingleShot(True)
         self._result_timer.timeout.connect(self._return_to_live)
@@ -552,6 +553,7 @@ class MainWindow(QMainWindow):
             item.setBackground(QColor("#1f1520"))
         else:
             item.setForeground(QColor("#00e676"))
+            item.setBackground(QColor("#0a1f14"))
 
         self._history_list.insertItem(0, item)
 
@@ -563,7 +565,7 @@ class MainWindow(QMainWindow):
         """Populate the history list from the database on startup."""
         self._history_list.clear()
         rows = self._db.get_recent_inspections(batch_id, limit=50)
-        for row in rows:
+        for row in reversed(rows):   # DB ส่งมา DESC → reverse ก่อน insertItem(0) จะได้ลำดับถูก
             self._prepend_history_row({
                 "verdict":    row["verdict"],
                 "piece_id":   row["piece_id"],
@@ -583,6 +585,9 @@ class MainWindow(QMainWindow):
         """Open the database viewer dialog."""
         dialog = DbViewerDialog(db=self._db, parent=self)
         dialog.exec()
+        # Sync in-memory batch state กลับจาก DB หลัง DB Viewer อาจลบ record ไป
+        state = self._batch_state.sync_from_db()
+        self._update_counters(state)
 
     def _set_camera_mode(self) -> None:
         """Switch to Camera mode."""
@@ -619,6 +624,9 @@ class MainWindow(QMainWindow):
 
     def _upload_and_inspect(self) -> None:
         """Open file dialog → inspect the selected image file."""
+        if self._file_inspecting:
+            return   # ป้องกัน double-click ขณะกำลัง process อยู่
+
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Image",
@@ -628,15 +636,17 @@ class MainWindow(QMainWindow):
         if not path:
             return
 
+        self._file_inspecting = True
         self._upload_btn.setEnabled(False)
         self._upload_btn.setText("⏳  Processing…")
 
-        # Run in daemon thread so UI stays responsive during CV inference
-        t = threading.Thread(
-            target=self._worker.inspect_file,
-            args=(path,),
-            daemon=True,
-        )
+        def _run():
+            try:
+                self._worker.inspect_file(path)
+            finally:
+                self._file_inspecting = False
+
+        t = threading.Thread(target=_run, daemon=True)
         t.start()
 
     def _reset_batch(self) -> None:

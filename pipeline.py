@@ -298,6 +298,7 @@ class CameraWorker(QThread):
             detections = result["detections"],
             image_b64  = result.get("image_b64", "") if result["verdict"] == "NG" else "",
         )
+        self._db.cleanup_old_data()
 
         payload = {
             **result,
@@ -455,6 +456,7 @@ class CameraWorker(QThread):
             detections = result["detections"],
             image_b64  = result.get("image_b64", "") if result["verdict"] == "NG" else "",
         )
+        self._db.cleanup_old_data()
 
         payload = {
             **result,

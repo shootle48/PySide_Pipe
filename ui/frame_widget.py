@@ -12,7 +12,10 @@ Two display modes (toggled by MainWindow):
 from __future__ import annotations
 
 import base64
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import cv2
 import numpy as np
@@ -90,9 +93,15 @@ class FrameWidget(QWidget):
         image_b64: base64-encoded JPEG (RGB, from pipeline._build_result).
         detections: list of {"label", "confidence", "bbox": {"x","y","w","h"}}.
         """
-        jpg_bytes = base64.b64decode(image_b64)
-        qimage    = QImage.fromData(jpg_bytes)
-        self._pixmap      = QPixmap.fromImage(qimage)
+        try:
+            jpg_bytes = base64.b64decode(image_b64)
+            qimage    = QImage.fromData(jpg_bytes)
+            if qimage.isNull():
+                raise ValueError("QImage decode failed")
+            self._pixmap = QPixmap.fromImage(qimage)
+        except Exception as exc:
+            logger.error(f"FrameWidget: cannot decode result image: {exc}")
+            return
         self._detections  = detections
         self._is_placeholder = False
         self.update()

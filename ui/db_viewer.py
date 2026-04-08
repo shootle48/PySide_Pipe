@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -118,6 +119,12 @@ class DbViewerDialog(QDialog):
         self._batch_list.currentItemChanged.connect(self._on_batch_selected)
         layout.addWidget(self._batch_list, stretch=1)
 
+        delete_batch_btn = QPushButton("🗑  ลบ Batch นี้")
+        delete_batch_btn.setObjectName("dangerBtn")
+        delete_batch_btn.setFixedHeight(28)
+        delete_batch_btn.clicked.connect(self._delete_current_batch)
+        layout.addWidget(delete_batch_btn)
+
         return panel
 
     # ── Right: inspection table + image preview ─────────────────────────
@@ -205,6 +212,18 @@ class DbViewerDialog(QDialog):
         bottom.addWidget(self._stat_rate)
         bottom.addStretch()
 
+        clear_img_btn = QPushButton("🖼  Clear Image")
+        clear_img_btn.setObjectName("secondaryBtn")
+        clear_img_btn.setToolTip("เคลียร์รูปของ record ที่เลือก (เก็บ metadata ไว้)")
+        clear_img_btn.clicked.connect(self._clear_selected_image)
+        bottom.addWidget(clear_img_btn)
+
+        delete_row_btn = QPushButton("🗑  ลบ Record")
+        delete_row_btn.setObjectName("dangerBtn")
+        delete_row_btn.setToolTip("ลบ inspection record ที่เลือกออกทั้งหมด")
+        delete_row_btn.clicked.connect(self._delete_selected_record)
+        bottom.addWidget(delete_row_btn)
+
         export_btn = QPushButton("📄  Export CSV")
         export_btn.setObjectName("secondaryBtn")
         export_btn.clicked.connect(self._export_csv)
@@ -273,7 +292,7 @@ class DbViewerDialog(QDialog):
 
             # Defects
             dets = row_data.get("detections", [])
-            det_text = ", ".join(d["label"] for d in dets) if dets else "—"
+            det_text = ", ".join(d.get("label", "unknown") for d in dets) if dets else "—"
             self._set_cell(row_idx, 3, det_text)
 
             # Timestamp (local time)
@@ -299,6 +318,23 @@ class DbViewerDialog(QDialog):
         item.setFont(QFont("Consolas", 10))
         self._table.setItem(row, col, item)
 
+    def _update_stats_bar(self, total: int, ng: int) -> None:
+        """อัพเดต stats bar ด้านล่างตาราง และ batch list item ซ้าย."""
+        # Stats bar
+        self._stat_total.setText(f"Total: {total}")
+        self._stat_ng.setText(f"NG: {ng}")
+        rate = f"{ng/total*100:.1f}%" if total > 0 else "—"
+        self._stat_rate.setText(f"NG Rate: {rate}")
+
+        # Batch list item (อัพ text ตรงๆ ไม่ reload ทั้งหมด)
+        for i in range(self._batch_list.count()):
+            item = self._batch_list.item(i)
+            if item.data(Qt.UserRole) == self._current_batch:
+                new_text = re.sub(r"Total: \d+", f"Total: {total}", item.text())
+                new_text = re.sub(r"NG: \d+",    f"NG: {ng}",       new_text)
+                item.setText(new_text)
+                break
+
     # ══════════════════════════════════════════════════════════════════════
     # Slots
     # ══════════════════════════════════════════════════════════════════════
@@ -321,9 +357,19 @@ class DbViewerDialog(QDialog):
             self._preview_label.setText("— ไม่มีภาพ (OK result หรือบันทึกก่อนอัปเดต) —")
             return
 
-        img_bytes = __import__('base64').b64decode(b64)
-        qimage    = QImage.fromData(img_bytes)
-        self._current_pixmap = QPixmap.fromImage(qimage)
+        try:
+            import base64 as _b64
+            img_bytes = _b64.b64decode(b64)
+            qimage    = QImage.fromData(img_bytes)
+            if qimage.isNull():
+                raise ValueError("QImage decode returned null")
+            self._current_pixmap = QPixmap.fromImage(qimage)
+        except Exception as exc:
+            logger.error(f"DbViewer: cannot decode image: {exc}")
+            self._current_pixmap = None
+            self._fullscreen_btn.setEnabled(False)
+            self._preview_label.setText("— โหลดภาพไม่สำเร็จ —")
+            return
         self._fullscreen_btn.setEnabled(True)
         self._preview_label.setPixmap(
             self._current_pixmap.scaled(
@@ -389,6 +435,89 @@ class DbViewerDialog(QDialog):
                 if item.data(Qt.UserRole) == prev_batch:
                     self._batch_list.setCurrentRow(i)
                     break
+
+    def _get_selected_piece_id(self) -> Optional[str]:
+        """Return piece_id ของ row ที่เลือกใน table หรือ None"""
+        selected = self._table.selectedItems()
+        if not selected:
+            return None
+        return self._table.item(self._table.row(selected[0]), 0).text()
+
+    @Slot()
+    def _clear_selected_image(self) -> None:
+        piece_id = self._get_selected_piece_id()
+        if not piece_id:
+            QMessageBox.warning(self, "Clear Image", "กรุณาเลือก record ก่อน")
+            return
+        confirm = QMessageBox.question(
+            self, "Clear Image",
+            f"เคลียร์รูปของ\n{piece_id}\n\n(metadata ยังคงอยู่)",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        self._db.clear_image_b64(piece_id)
+        # อัปเดต local cache + preview
+        row_idx = self._table.row(self._table.selectedItems()[0])
+        if row_idx < len(self._row_images):
+            self._row_images[row_idx] = ""
+        self._current_pixmap = None
+        self._fullscreen_btn.setEnabled(False)
+        self._preview_label.setPixmap(QPixmap())
+        self._preview_label.setText("— รูปถูกเคลียร์แล้ว —")
+
+    @Slot()
+    def _delete_selected_record(self) -> None:
+        piece_id = self._get_selected_piece_id()
+        if not piece_id:
+            QMessageBox.warning(self, "ลบ Record", "กรุณาเลือก record ก่อน")
+            return
+        confirm = QMessageBox.question(
+            self, "ลบ Record",
+            f"ลบ inspection record\n{piece_id}\n\nไม่สามารถกู้คืนได้",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        self._db.delete_inspection(piece_id)
+        row_idx = self._table.row(self._table.selectedItems()[0])
+        self._table.removeRow(row_idx)
+        if row_idx < len(self._row_images):
+            self._row_images.pop(row_idx)
+        self._table.clearSelection()   # ป้องกัน index out of sync
+
+        # Sync counters: recalc จาก DB จริง แล้วอัพ stats bar + batch list item
+        if self._current_batch:
+            total, ng = self._db.recalculate_batch_counters(self._current_batch)
+            self._update_stats_bar(total, ng)
+        self._preview_label.setPixmap(QPixmap())
+        self._preview_label.setText("— เลือก row ที่เป็น NG เพื่อดูภาพ —")
+        self._current_pixmap = None
+        self._fullscreen_btn.setEnabled(False)
+
+    @Slot()
+    def _delete_current_batch(self) -> None:
+        if not self._current_batch:
+            QMessageBox.warning(self, "ลบ Batch", "กรุณาเลือก batch ก่อน")
+            return
+        confirm = QMessageBox.question(
+            self, "ลบ Batch",
+            f"ลบ inspection ทั้งหมดใน\n{self._current_batch}\n\nไม่สามารถกู้คืนได้",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        self._db.delete_batch_inspections(self._current_batch)
+        self._load_batches()   # refresh batch list ฝั่งซ้าย
+        self._table.setRowCount(0)
+        self._row_images.clear()
+        self._stat_total.setText("Total: 0")
+        self._stat_ng.setText("NG: 0")
+        self._stat_rate.setText("NG Rate: —")
+        self._preview_label.setPixmap(QPixmap())
+        self._preview_label.setText("— เลือก row ที่เป็น NG เพื่อดูภาพ —")
+        self._current_pixmap = None
+        self._fullscreen_btn.setEnabled(False)
 
     @Slot()
     def _export_csv(self) -> None:
@@ -528,6 +657,20 @@ class DbViewerDialog(QDialog):
                 background: #1c1f2e;
                 color: #e8eaf0;
                 border-color: #3a4060;
+            }
+
+            /* Danger button */
+            #dangerBtn {
+                background: transparent;
+                color: #ff1744;
+                border: 1px solid #ff174466;
+                border-radius: 4px;
+                font-size: 12px;
+                padding: 5px 12px;
+            }
+            #dangerBtn:hover {
+                background: #ff174422;
+                border-color: #ff1744;
             }
 
             /* Image preview */

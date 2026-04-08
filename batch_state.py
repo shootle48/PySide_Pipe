@@ -89,6 +89,18 @@ class BatchStateManager:
         with self._lock:
             return self._snapshot()
 
+    def sync_from_db(self) -> dict:
+        """Reload total/ng จาก DB สำหรับ batch ปัจจุบัน.
+        ใช้หลังจาก external code (เช่น DbViewer) ลบ record ออกจาก DB."""
+        if self._db is None:
+            return self.get_state()
+        with self._lock:
+            recovered = self._db.get_active_batch()
+            if recovered and recovered["id"] == self._data.batch_id:
+                self._data.total = recovered["total"]
+                self._data.ng    = recovered["ng"]
+            return self._snapshot()
+
     def _snapshot(self) -> dict:
         return {"id": self._data.batch_id, "total": self._data.total, "ng": self._data.ng}
 
