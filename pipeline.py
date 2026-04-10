@@ -279,7 +279,9 @@ class CameraWorker(QThread):
 
         logger.info(f"CameraWorker: inspecting file '{os.path.basename(path)}'")
         try:
+            _t0 = time.perf_counter()
             result = self._inspector.inspect(frame)
+            logger.info(f"CameraWorker: inference done in {(time.perf_counter()-_t0)*1000:.1f} ms")
         except Exception as exc:
             logger.error(f"CameraWorker: file inspection error: {exc}", exc_info=True)
             self.status_changed.emit("idle")
@@ -436,7 +438,9 @@ class CameraWorker(QThread):
         self.status_changed.emit("processing")
 
         try:
+            _t0 = time.perf_counter()
             result = self._inspector.inspect(frame_bgr)
+            logger.info(f"CameraWorker: inference done in {(time.perf_counter()-_t0)*1000:.1f} ms")
         except Exception as exc:
             logger.error(f"CameraWorker: inspection error: {exc}", exc_info=True)
             self.status_changed.emit("idle")
