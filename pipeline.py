@@ -302,14 +302,16 @@ class CameraWorker(QThread):
 
         logger.info(f"CameraWorker: inspecting file '{os.path.basename(path)}'")
         try:
+            _t0 = time.perf_counter()
             result = self._inspector.inspect(frame)
+            logger.info(f"CameraWorker: inference done in {(time.perf_counter()-_t0)*1000:.1f} ms")
         except Exception as exc:
             logger.error(f"CameraWorker: file inspection error: {exc}", exc_info=True)
             self.status_changed.emit("idle")
             return
 
         batch_snapshot = self._batch_state.increment(result["verdict"])
-        piece_id       = f"{batch_snapshot['id']}-{batch_snapshot['total']:04d}"
+        piece_id       = f"{batch_snapshot['id']}-{batch_snapshot['seq']:04d}"
         timestamp      = datetime.now(timezone.utc).isoformat()
 
         self._db.save_inspection(
@@ -459,7 +461,9 @@ class CameraWorker(QThread):
         self.status_changed.emit("processing")
 
         try:
+            _t0 = time.perf_counter()
             result = self._inspector.inspect(frame_bgr)
+            logger.info(f"CameraWorker: inference done in {(time.perf_counter()-_t0)*1000:.1f} ms")
         except Exception as exc:
             logger.error(f"CameraWorker: inspection error: {exc}", exc_info=True)
             self.status_changed.emit("idle")
@@ -467,7 +471,7 @@ class CameraWorker(QThread):
 
         # Increment batch counters + persist to DB
         batch_snapshot = self._batch_state.increment(result["verdict"])
-        piece_id       = f"{batch_snapshot['id']}-{batch_snapshot['total']:04d}"
+        piece_id       = f"{batch_snapshot['id']}-{batch_snapshot['seq']:04d}"
         timestamp      = datetime.now(timezone.utc).isoformat()
 
         self._db.save_inspection(
