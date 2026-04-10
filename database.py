@@ -187,6 +187,21 @@ class DatabaseManager:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def get_max_piece_seq(self, batch_id: str) -> int:
+        """คืน sequence number สูงสุดที่ใช้ไปแล้วใน batch นี้.
+        ใช้ป้องกัน piece_id ชนกันหลังจากมีการลบ record."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT piece_id FROM inspections WHERE batch_id = ? ORDER BY piece_id DESC LIMIT 1",
+                (batch_id,),
+            ).fetchone()
+        if row is None:
+            return 0
+        try:
+            return int(row["piece_id"].rsplit("-", 1)[-1])
+        except (ValueError, IndexError):
+            return 0
+
     # ── CRUD — Delete / Update ─────────────────────────────────────────────
 
     def delete_inspection(self, piece_id: str) -> None:

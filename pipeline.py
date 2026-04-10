@@ -286,7 +286,7 @@ class CameraWorker(QThread):
             return
 
         batch_snapshot = self._batch_state.increment(result["verdict"])
-        piece_id       = f"{batch_snapshot['id']}-{batch_snapshot['total']:04d}"
+        piece_id       = f"{batch_snapshot['id']}-{batch_snapshot['seq']:04d}"
         timestamp      = datetime.now(timezone.utc).isoformat()
 
         self._db.save_inspection(
@@ -444,7 +444,7 @@ class CameraWorker(QThread):
 
         # Increment batch counters + persist to DB
         batch_snapshot = self._batch_state.increment(result["verdict"])
-        piece_id       = f"{batch_snapshot['id']}-{batch_snapshot['total']:04d}"
+        piece_id       = f"{batch_snapshot['id']}-{batch_snapshot['seq']:04d}"
         timestamp      = datetime.now(timezone.utc).isoformat()
 
         self._db.save_inspection(

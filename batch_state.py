@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 @dataclass
 class _BatchData:
     batch_id: str
-    total: int = 0
-    ng: int = 0
+    seq: int   = 0   # sequence counter สำหรับสร้าง piece_id (ใช้ MAX จาก DB)
+    total: int = 0   # display counter (ใช้ COUNT จาก DB)
+    ng: int    = 0
 
 
 class BatchStateManager:
@@ -44,12 +45,14 @@ class BatchStateManager:
         if self._db is not None:
             recovered = self._db.get_active_batch()
             if recovered:
+                max_seq = self._db.get_max_piece_seq(recovered["id"])
                 logger.info(
                     f"Recovered batch {recovered['id']} "
-                    f"(total={recovered['total']}, ng={recovered['ng']})"
+                    f"(total={recovered['total']}, ng={recovered['ng']}, seq={max_seq})"
                 )
                 return _BatchData(
                     batch_id=recovered["id"],
+                    seq=max_seq,
                     total=recovered["total"],
                     ng=recovered["ng"],
                 )
@@ -63,6 +66,7 @@ class BatchStateManager:
 
     def increment(self, verdict: str) -> dict:
         with self._lock:
+            self._data.seq   += 1
             self._data.total += 1
             if verdict == "NG":
                 self._data.ng += 1
@@ -102,7 +106,12 @@ class BatchStateManager:
             return self._snapshot()
 
     def _snapshot(self) -> dict:
-        return {"id": self._data.batch_id, "total": self._data.total, "ng": self._data.ng}
+        return {
+            "id":    self._data.batch_id,
+            "seq":   self._data.seq,
+            "total": self._data.total,
+            "ng":    self._data.ng,
+        }
 
     @staticmethod
     def _generate_batch_id() -> str:
