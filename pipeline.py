@@ -142,10 +142,10 @@ class PipeInspector:
 
     def _find_pipe_circle(self, frame_bgr: np.ndarray) -> Optional[tuple]:
         gray  = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        blur  = cv2.GaussianBlur(gray, (9, 9), 0)
+        blur  = cv2.GaussianBlur(gray, (31, 31), 0)
         adaptive = cv2.adaptiveThreshold(
             blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV, 51, 12,
+            cv2.THRESH_BINARY_INV, 201, 10,
         )
         circles = cv2.HoughCircles(
             adaptive, cv2.HOUGH_GRADIENT,
@@ -159,9 +159,32 @@ class PipeInspector:
 
     def _extract_roi(self, frame_bgr: np.ndarray, cx: int, cy: int, radius: int):
         gray         = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        inner_radius = int(radius * self.inner_radius_ratio)
-        mask         = np.zeros_like(gray)
-        cv2.circle(mask, (cx, cy), inner_radius, 255, thickness=-1)
+        pipe_mask = np.zeros_like(gray)
+        cv2.circle(pipe_mask, (cx, cy), radius, 255, -1)
+        pipe_gray = cv2.bitwise_and(gray, pipe_mask)
+
+        blur_inner = cv2.GaussianBlur(pipe_gray, (31, 31), 0)
+        adaptive_inner = cv2.adaptiveThreshold(
+            blur_inner, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV, 201, 10,
+        )
+        inner_circles = cv2.HoughCircles(
+            adaptive_inner, cv2.HOUGH_GRADIENT,
+            dp=1, minDist=100, param1=50, param2=30,
+            minRadius=20, maxRadius=0,
+        )
+
+        if inner_circles is not None:
+            inner_circles = np.uint16(np.around(inner_circles))
+            ix, iy, ir = min(inner_circles[0], key=lambda c: c[2])
+            inner_radius = int(ir * self.inner_radius_ratio)
+            center = (int(ix), int(iy))
+        else:
+            inner_radius = int(radius * self.inner_radius_ratio)
+            center = (cx, cy)
+
+        mask = np.zeros_like(gray)
+        cv2.circle(mask, center, inner_radius, 255, thickness=-1)
         return gray, mask, inner_radius
 
     def _detect_defects(self, gray: np.ndarray, mask: np.ndarray) -> list:
@@ -169,7 +192,7 @@ class PipeInspector:
         inside_blur  = cv2.GaussianBlur(inside_pipe, (5, 5), 0)
         defect_thresh = cv2.adaptiveThreshold(
             inside_blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV, 51, 4,
+            cv2.THRESH_BINARY_INV, 201, 10,
         )
         defect_thresh = cv2.bitwise_and(defect_thresh, mask)
         kernel        = np.ones((2, 2), np.uint8)
