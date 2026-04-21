@@ -1,0 +1,3 @@
+﻿piece_id,batch_id,verdict,confidence,label,bbox_x,bbox_y,bbox_w,bbox_h,timestamp
+BATCH-6F69C4-0003,BATCH-6F69C4,NG,0.990,defect,349,805,78,118,2026-04-08T10:10:07.878554+00:00
+BATCH-6F69C4-0003,BATCH-6F69C4,NG,0.990,defect,265,773,47,55,2026-04-08T10:10:07.878554+00:00

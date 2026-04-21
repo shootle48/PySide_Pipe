@@ -28,12 +28,13 @@ CLEANUP_KEEP_RATIO  = 0.60   # เก็บ 60% ใหม่สุด, ลบ 40
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS batches (
-    id          TEXT    PRIMARY KEY,
-    started_at  TEXT    NOT NULL,
-    ended_at    TEXT,
-    total       INTEGER NOT NULL DEFAULT 0,
-    ng          INTEGER NOT NULL DEFAULT 0,
-    is_active   INTEGER NOT NULL DEFAULT 1
+    id             TEXT    PRIMARY KEY,
+    started_at     TEXT    NOT NULL,
+    ended_at       TEXT,
+    total          INTEGER NOT NULL DEFAULT 0,
+    ng             INTEGER NOT NULL DEFAULT 0,
+    is_active      INTEGER NOT NULL DEFAULT 1,
+    expected_total INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS inspections (
@@ -89,6 +90,15 @@ class DatabaseManager:
                 if "duplicate column" not in str(e).lower() and "already exists" not in str(e).lower():
                     logger.error(f"Migration failed unexpectedly: {e}")
                     raise
+            # Migration: add expected_total to batches
+            try:
+                self._conn.execute("ALTER TABLE batches ADD COLUMN expected_total INTEGER NOT NULL DEFAULT 0")
+                self._conn.commit()
+                logger.info("Migration: added expected_total column to batches.")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower() and "already exists" not in str(e).lower():
+                    logger.error(f"Migration failed unexpectedly: {e}")
+                    raise
 
     # ── Batch operations ───────────────────────────────────────────────────
 
@@ -96,7 +106,7 @@ class DatabaseManager:
         with self._lock:
             row = self._conn.execute(
                 """
-                SELECT id, total, ng FROM batches
+                SELECT id, total, ng, expected_total FROM batches
                 WHERE is_active = 1
                 ORDER BY started_at DESC LIMIT 1
                 """
@@ -105,19 +115,30 @@ class DatabaseManager:
             result = dict(row)
             logger.info(
                 f"Recovered active batch: id={result['id']} "
-                f"total={result['total']} ng={result['ng']}"
+                f"total={result['total']} ng={result['ng']} "
+                f"expected={result['expected_total']}"
             )
             return result
         return None
 
-    def create_batch(self, batch_id: str, started_at: str) -> None:
+    def create_batch(self, batch_id: str, started_at: str, expected_total: int = 0) -> None:
         with self._lock:
             self._conn.execute(
-                "INSERT INTO batches (id, started_at, total, ng, is_active) VALUES (?, ?, 0, 0, 1)",
-                (batch_id, started_at),
+                "INSERT INTO batches (id, started_at, total, ng, is_active, expected_total) "
+                "VALUES (?, ?, 0, 0, 1, ?)",
+                (batch_id, started_at, expected_total),
             )
             self._conn.commit()
-        logger.info(f"New batch created: {batch_id}")
+        logger.info(f"New batch created: {batch_id} (expected={expected_total})")
+
+    def update_expected_total(self, batch_id: str, expected_total: int) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE batches SET expected_total = ? WHERE id = ?",
+                (expected_total, batch_id),
+            )
+            self._conn.commit()
+        logger.info(f"Updated expected_total for {batch_id}: {expected_total}")
 
     def close_active_batch(self, batch_id: str, ended_at: str) -> None:
         with self._lock:
@@ -180,12 +201,50 @@ class DatabaseManager:
             for row in rows
         ]
 
+    def get_all_inspections_with_images(self) -> list[dict]:
+        """ดึง inspection ทั้งหมดที่มีรูป (NG) ข้ามทุก batch — สำหรับ Dataset Export"""
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT piece_id, batch_id, verdict, confidence, timestamp,
+                       detections, image_b64
+                FROM   inspections
+                WHERE  image_b64 IS NOT NULL AND image_b64 != ''
+                ORDER  BY timestamp ASC
+                """
+            ).fetchall()
+        return [
+            {**dict(row), "detections": json.loads(row["detections"])}
+            for row in rows
+        ]
+
     def get_all_batches(self) -> list[dict]:
         with self._lock:
             rows = self._conn.execute(
-                "SELECT id, started_at, ended_at, total, ng, is_active FROM batches ORDER BY started_at DESC"
+                "SELECT id, started_at, ended_at, total, ng, is_active, expected_total "
+                "FROM batches ORDER BY started_at DESC"
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def count_inspections_by_verdict(self, batch_id: str, verdict: str) -> int:
+        """นับจำนวน inspection ของ batch นี้ตาม verdict (OK/NG)."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS c FROM inspections WHERE batch_id = ? AND verdict = ?",
+                (batch_id, verdict),
+            ).fetchone()
+        return int(row["c"] or 0)
+
+    def count_saved_images(self, batch_id: str, verdict: str) -> int:
+        """นับจำนวน record ของ batch ที่บันทึกรูปจริง (image_b64 != '')."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS c FROM inspections "
+                "WHERE batch_id = ? AND verdict = ? "
+                "AND image_b64 IS NOT NULL AND image_b64 != ''",
+                (batch_id, verdict),
+            ).fetchone()
+        return int(row["c"] or 0)
 
     def get_max_piece_seq(self, batch_id: str) -> int:
         """คืน sequence number สูงสุดที่ใช้ไปแล้วใน batch นี้.

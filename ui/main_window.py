@@ -37,9 +37,9 @@ from typing import Optional
 from PySide6.QtCore    import Qt, QTimer, Slot
 from PySide6.QtGui     import QColor, QFont, QIcon
 from PySide6.QtWidgets import (
-    QFileDialog, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QMainWindow, QMessageBox, QPushButton, QScrollArea, QSizePolicy,
-    QSplitter, QVBoxLayout, QWidget,
+    QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QListWidget,
+    QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QScrollArea,
+    QSizePolicy, QSplitter, QVBoxLayout, QWidget,
 )
 
 from batch_state import BatchStateManager
@@ -299,6 +299,26 @@ class MainWindow(QMainWindow):
         rate_row.addWidget(self._ng_rate_label, stretch=1)
         c_layout.addLayout(rate_row)
 
+        # Expected vs Actual row
+        exp_row = QHBoxLayout()
+        exp_row.addWidget(QLabel("Expected"))
+        self._expected_label = QLabel("—")
+        self._expected_label.setAlignment(Qt.AlignRight)
+        self._expected_label.setObjectName("expectedLabel")
+        exp_row.addWidget(self._expected_label, stretch=1)
+        c_layout.addLayout(exp_row)
+
+        self._missing_label = QLabel("")
+        self._missing_label.setAlignment(Qt.AlignCenter)
+        self._missing_label.setObjectName("missingLabel")
+        c_layout.addWidget(self._missing_label)
+
+        # Set / Edit expected button
+        self._expected_btn = QPushButton("✎   Set Expected")
+        self._expected_btn.setObjectName("secondaryBtn")
+        self._expected_btn.clicked.connect(self._set_expected)
+        c_layout.addWidget(self._expected_btn)
+
         # Reset button
         self._reset_btn = QPushButton("↺   Reset Batch")
         self._reset_btn.setObjectName("resetBtn")
@@ -464,9 +484,10 @@ class MainWindow(QMainWindow):
         self._live_badge.setVisible(True)
 
     def _update_counters(self, batch: dict) -> None:
-        """Refresh TOTAL / NG / NG Rate from a batch snapshot dict."""
-        total = batch.get("total", 0)
-        ng    = batch.get("ng", 0)
+        """Refresh TOTAL / NG / NG Rate / Expected from a batch snapshot dict."""
+        total    = batch.get("total", 0)
+        ng       = batch.get("ng", 0)
+        expected = batch.get("expected_total", 0)
 
         self._counter_total[1].setText(str(total))
         self._counter_ng[1].setText(str(ng))
@@ -476,6 +497,23 @@ class MainWindow(QMainWindow):
             self._ng_rate_label.setText(f"{rate:.1f} %")
         else:
             self._ng_rate_label.setText("—")
+
+        # Expected vs actual
+        if expected > 0:
+            self._expected_label.setText(str(expected))
+            diff = expected - total
+            if diff > 0:
+                self._missing_label.setText(f"⚠ ขาดอีก {diff} ชิ้น")
+                self._missing_label.setStyleSheet("color:#ffa726;")
+            elif diff < 0:
+                self._missing_label.setText(f"⚠ เกิน {abs(diff)} ชิ้น")
+                self._missing_label.setStyleSheet("color:#ff1744;")
+            else:
+                self._missing_label.setText("✓ ครบตามเป้า")
+                self._missing_label.setStyleSheet("color:#00e676;")
+        else:
+            self._expected_label.setText("—")
+            self._missing_label.setText("")
 
         self._batch_id_label.setText(batch.get("id", "—"))
 
@@ -652,10 +690,31 @@ class MainWindow(QMainWindow):
 
     def _reset_batch(self) -> None:
         """Reset batch counters and return to live view."""
-        new_state = self._batch_state.reset()
+        current_expected = self._batch_state.get_state().get("expected_total", 0)
+        expected, ok = QInputDialog.getInt(
+            self, "Reset Batch",
+            "กรอกจำนวนชิ้นที่คาดหวังใน batch ใหม่\n(0 = ไม่ระบุ)",
+            current_expected, 0, 1_000_000,
+        )
+        if not ok:
+            return
+        new_state = self._batch_state.reset(expected_total=expected)
         self._update_counters(new_state)
         self._history_list.clear()
         self._frame_widget.show_placeholder("Batch reset — กดปุ่ม Capture เพื่อเริ่มใหม่")
+
+    def _set_expected(self) -> None:
+        """เปลี่ยน expected_total ของ batch ปัจจุบันโดยไม่ reset."""
+        current = self._batch_state.get_state().get("expected_total", 0)
+        expected, ok = QInputDialog.getInt(
+            self, "Set Expected",
+            "จำนวนชิ้นที่คาดหวังใน batch นี้\n(0 = ไม่ระบุ)",
+            current, 0, 1_000_000,
+        )
+        if not ok:
+            return
+        new_state = self._batch_state.set_expected_total(expected)
+        self._update_counters(new_state)
 
         # Clear last result card
         while self._last_result_layout.count() > 1:

@@ -229,6 +229,12 @@ class DbViewerDialog(QDialog):
         export_btn.clicked.connect(self._export_csv)
         bottom.addWidget(export_btn)
 
+        export_ds_btn = QPushButton("📦  Export Dataset")
+        export_ds_btn.setObjectName("secondaryBtn")
+        export_ds_btn.setToolTip("Export รูป + annotations สำหรับทำ dataset train model")
+        export_ds_btn.clicked.connect(self._export_dataset)
+        bottom.addWidget(export_ds_btn)
+
         layout.addLayout(bottom)
         return panel
 
@@ -553,6 +559,96 @@ class DbViewerDialog(QDialog):
             QMessageBox.information(self, "Export Complete", f"Saved to:\n{path}")
         except Exception as exc:
             QMessageBox.critical(self, "Export Failed", str(exc))
+
+    @Slot()
+    def _export_dataset(self) -> None:
+        """Export NG images + annotations เป็น dataset พร้อม train model.
+
+        Structure:
+          dataset_export_YYYYMMDD_HHMMSS/
+          ├── NG/
+          │   ├── BATCH-XXXXXX-0001.jpg
+          │   └── ...
+          └── annotations.csv  (piece_id, batch_id, verdict, confidence,
+                               label, bbox_x, bbox_y, bbox_w, bbox_h, timestamp)
+        """
+        import base64
+        from pathlib import Path
+
+        target_dir = QFileDialog.getExistingDirectory(
+            self, "เลือกโฟลเดอร์ปลายทางสำหรับ Dataset"
+        )
+        if not target_dir:
+            return
+
+        rows = self._db.get_all_inspections_with_images()
+        if not rows:
+            QMessageBox.warning(
+                self, "Export Dataset",
+                "ไม่พบรูปภาพใน DB — ยังไม่มี NG inspection ที่บันทึกรูปไว้"
+            )
+            return
+
+        # สร้าง lookup: batch_id → (total, ng)
+        batch_counters = {
+            b["id"]: (b["total"], b["ng"])
+            for b in self._db.get_all_batches()
+        }
+
+        ts_folder = datetime.now().strftime("dataset_export_%Y%m%d_%H%M%S")
+        out_dir   = Path(target_dir) / ts_folder
+        ng_dir    = out_dir / "NG"
+        try:
+            ng_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            QMessageBox.critical(self, "Export Failed", f"สร้างโฟลเดอร์ไม่สำเร็จ:\n{exc}")
+            return
+
+        saved_images = 0
+        failed       = 0
+        csv_rows     = []
+
+        for r in rows:
+            piece_id = r["piece_id"]
+            try:
+                img_bytes = base64.b64decode(r["image_b64"])
+                (ng_dir / f"{piece_id}.jpg").write_bytes(img_bytes)
+                saved_images += 1
+            except Exception as exc:
+                logger.error(f"Failed to save {piece_id}: {exc}")
+                failed += 1
+                continue
+
+            # Annotations — 1 row per inspection (รวม label หลายตัวด้วย comma)
+            dets   = r.get("detections", [])
+            labels = ", ".join(d.get("label", "unknown") for d in dets) if dets else ""
+            total, ng = batch_counters.get(r["batch_id"], (0, 0))
+            csv_rows.append([
+                piece_id, r["batch_id"], r["verdict"], f"{r['confidence']:.3f}",
+                labels, total, ng, r["timestamp"],
+            ])
+
+        # Write annotations.csv
+        try:
+            with open(out_dir / "annotations.csv", "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "piece_id", "batch_id", "verdict", "confidence",
+                    "label", "total", "ng", "timestamp",
+                ])
+                writer.writerows(csv_rows)
+        except Exception as exc:
+            QMessageBox.critical(self, "Export Failed", f"เขียน annotations.csv ไม่สำเร็จ:\n{exc}")
+            return
+
+        msg = (
+            f"Saved to:\n{out_dir}\n\n"
+            f"✅ Images saved: {saved_images}\n"
+            f"📝 Annotations: {len(csv_rows)} rows\n"
+        )
+        if failed:
+            msg += f"⚠ Failed: {failed} images\n"
+        QMessageBox.information(self, "Export Dataset Complete", msg)
 
     # ══════════════════════════════════════════════════════════════════════
     # Stylesheet

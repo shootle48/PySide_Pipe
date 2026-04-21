@@ -50,6 +50,10 @@ CAPTURE_DELAY      = 0.3       # seconds to wait after trigger (pipe settles)
 TIMER_INTERVAL     = 6.0       # seconds between auto-triggers (timer mode)
 STREAM_FPS         = 20        # live view frame rate cap
 
+# ── OK Image Sampling Config ─────────────────────────────────────────────
+OK_SAMPLE_EVERY_N  = 50        # ทุก N ชิ้น OK ค่อย snap 1 รูป
+MAX_OK_NG_RATIO    = 1.5       # saved_OK / saved_NG ไม่เกินค่านี้ (ป้องกัน storage บวม)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FrameBuffer — shared between _read_frames_loop and _emit_frames_loop
@@ -321,7 +325,7 @@ class CameraWorker(QThread):
             confidence = result["confidence"],
             timestamp  = timestamp,
             detections = result["detections"],
-            image_b64  = result.get("image_b64", "") if result["verdict"] == "NG" else "",
+            image_b64  = result.get("image_b64", "") if self._should_save_image(result["verdict"], batch_snapshot["id"]) else "",
         )
         self._db.cleanup_old_data()
 
@@ -438,6 +442,30 @@ class CameraWorker(QThread):
         else:
             self._stop_event.wait(timeout=self._timer_interval)
 
+    # ── Image save policy ──────────────────────────────────────────────────
+
+    def _should_save_image(self, verdict: str, batch_id: str) -> bool:
+        """ตัดสินใจว่าจะเก็บรูปหรือไม่:
+          NG → เก็บทุกครั้ง
+          OK → เก็บทุก OK_SAMPLE_EVERY_N ชิ้น แต่ต้องไม่ทำให้
+               saved_OK / saved_NG > MAX_OK_NG_RATIO (ถ้าไม่มี NG เลย ก็ไม่เก็บ)
+        """
+        if verdict == "NG":
+            return True
+        # OK sampling
+        ok_count = self._db.count_inspections_by_verdict(batch_id, "OK") + 1  # +1 = ตัวปัจจุบัน
+        if ok_count % OK_SAMPLE_EVERY_N != 0:
+            return False
+        saved_ng = self._db.count_saved_images(batch_id, "NG")
+        if saved_ng == 0:
+            return False  # ยังไม่มี NG reference — ไม่ sample OK
+        saved_ok = self._db.count_saved_images(batch_id, "OK")
+        if (saved_ok + 1) / saved_ng > MAX_OK_NG_RATIO:
+            logger.info(f"OK sample skipped (ratio cap): ok={saved_ok+1} ng={saved_ng}")
+            return False
+        logger.info(f"OK sampled at #{ok_count} (ok={saved_ok+1} ng={saved_ng})")
+        return True
+
     # ── Inspection cycle ───────────────────────────────────────────────────
 
     def _run_inspection_cycle(self) -> None:
@@ -481,7 +509,7 @@ class CameraWorker(QThread):
             confidence = result["confidence"],
             timestamp  = timestamp,
             detections = result["detections"],
-            image_b64  = result.get("image_b64", "") if result["verdict"] == "NG" else "",
+            image_b64  = result.get("image_b64", "") if self._should_save_image(result["verdict"], batch_snapshot["id"]) else "",
         )
         self._db.cleanup_old_data()
 

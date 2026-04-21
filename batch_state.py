@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class _BatchData:
     batch_id: str
-    seq: int   = 0   # sequence counter สำหรับสร้าง piece_id (ใช้ MAX จาก DB)
-    total: int = 0   # display counter (ใช้ COUNT จาก DB)
-    ng: int    = 0
+    seq: int            = 0   # sequence counter สำหรับสร้าง piece_id (ใช้ MAX จาก DB)
+    total: int          = 0   # display counter (ใช้ COUNT จาก DB)
+    ng: int             = 0
+    expected_total: int = 0   # จำนวนชิ้นที่คาดหวังใน batch นี้ (user input)
 
 
 class BatchStateManager:
@@ -55,6 +56,7 @@ class BatchStateManager:
                     seq=max_seq,
                     total=recovered["total"],
                     ng=recovered["ng"],
+                    expected_total=recovered.get("expected_total", 0),
                 )
 
         new_id = self._generate_batch_id()
@@ -76,18 +78,26 @@ class BatchStateManager:
             self._db.update_batch_counters(snapshot["id"], snapshot["total"], snapshot["ng"])
         return snapshot
 
-    def reset(self) -> dict:
+    def reset(self, expected_total: int = 0) -> dict:
         now = datetime.now(timezone.utc).isoformat()
         new_id = self._generate_batch_id()
         with self._lock:
             old_id = self._data.batch_id
             if self._db is not None:
                 self._db.close_active_batch(old_id, now)
-                self._db.create_batch(new_id, now)
-            self._data = _BatchData(batch_id=new_id)
+                self._db.create_batch(new_id, now, expected_total)
+            self._data = _BatchData(batch_id=new_id, expected_total=expected_total)
             snapshot = self._snapshot()
-        logger.info(f"Batch reset: {old_id} → {new_id}")
+        logger.info(f"Batch reset: {old_id} → {new_id} (expected={expected_total})")
         return snapshot
+
+    def set_expected_total(self, expected_total: int) -> dict:
+        """แก้ expected_total ของ batch ปัจจุบัน (โดยไม่ reset)."""
+        with self._lock:
+            self._data.expected_total = expected_total
+            if self._db is not None:
+                self._db.update_expected_total(self._data.batch_id, expected_total)
+            return self._snapshot()
 
     def get_state(self) -> dict:
         with self._lock:
@@ -101,14 +111,16 @@ class BatchStateManager:
         with self._lock:
             recovered = self._db.get_active_batch()
             if recovered and recovered["id"] == self._data.batch_id:
-                self._data.total = recovered["total"]
-                self._data.ng    = recovered["ng"]
+                self._data.total          = recovered["total"]
+                self._data.ng             = recovered["ng"]
+                self._data.expected_total = recovered.get("expected_total", 0)
             return self._snapshot()
 
     def _snapshot(self) -> dict:
         return {
-            "id":    self._data.batch_id,
-            "seq":   self._data.seq,
+            "id":             self._data.batch_id,
+            "seq":            self._data.seq,
+            "expected_total": self._data.expected_total,
             "total": self._data.total,
             "ng":    self._data.ng,
         }
