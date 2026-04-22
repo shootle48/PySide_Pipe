@@ -1,0 +1,32 @@
+2026-04-22 17:25:39 | INFO     | database | Database ready: C:\Users\thepr\pipe-inspector-pyside\data\pipe_inspector.db
+2026-04-22 17:25:39 | INFO     | database | Recalculated all batch counters after cleanup.
+2026-04-22 17:25:39 | INFO     | database | Recovered active batch: id=BATCH-6F69C4 total=3 ng=1 expected=500
+2026-04-22 17:25:39 | INFO     | batch_state | Recovered batch BATCH-6F69C4 (total=3, ng=1, seq=5)
+2026-04-22 17:25:41 | INFO     | ui.main_window | CameraWorker started.
+2026-04-22 17:25:41 | INFO     | pipeline | CameraWorker: starting | camera=0 trigger=manual
+2026-04-22 17:25:41 | INFO     | __main__ | Pipe Inspector (PySide6) started.
+2026-04-22 17:25:43 | INFO     | pipeline | CameraWorker: 640×480 @ 30fps
+2026-04-22 17:25:43 | INFO     | pipeline | CameraWorker: warming up (10 frames)...
+2026-04-22 17:25:44 | INFO     | pipeline | CameraWorker: warmup done.
+2026-04-22 17:25:44 | INFO     | pipeline | CameraWorker: frame reader + emitter threads started.
+2026-04-22 17:25:57 | INFO     | ui.main_window | Camera select: no change
+2026-04-22 17:26:20 | INFO     | ui.main_window | Mode: Upload Image
+2026-04-22 17:26:31 | INFO     | pipeline | CameraWorker: inspecting file 'BATCH-6F69C4-0003.jpg'
+2026-04-22 17:26:32 | INFO     | pipeline | PipeInspector: NG | defects=2 | pipe=(340,838) r=163
+2026-04-22 17:26:32 | INFO     | pipeline | CameraWorker: inference done in 156.4 ms
+2026-04-22 17:26:32 | INFO     | database | Recalculated all batch counters after cleanup.
+2026-04-22 17:26:32 | INFO     | pipeline | CameraWorker: file done | verdict=NG | detections=2
+2026-04-22 17:27:41 | INFO     | database | Recovered active batch: id=BATCH-6F69C4 total=4 ng=2 expected=500
+2026-04-22 17:27:50 | INFO     | database | Updated expected_total for BATCH-6F69C4: 4
+2026-04-22 17:27:50 | INFO     | ui.main_window | Batch reset → BATCH-6F69C4
+2026-04-22 17:27:54 | INFO     | database | Updated expected_total for BATCH-6F69C4: 3
+2026-04-22 17:27:54 | INFO     | ui.main_window | Batch reset → BATCH-6F69C4
+2026-04-22 17:27:58 | INFO     | database | Updated expected_total for BATCH-6F69C4: 4
+2026-04-22 17:27:58 | INFO     | ui.main_window | Batch reset → BATCH-6F69C4
+2026-04-22 17:28:00 | INFO     | database | Updated expected_total for BATCH-6F69C4: 5
+2026-04-22 17:28:00 | INFO     | ui.main_window | Batch reset → BATCH-6F69C4
+2026-04-22 17:28:08 | INFO     | ui.main_window | MainWindow: closing — stopping worker...
+2026-04-22 17:28:08 | INFO     | pipeline | CameraWorker: stop requested.
+2026-04-22 17:28:09 | INFO     | pipeline | CameraWorker: camera released.
+2026-04-22 17:28:09 | INFO     | database | Database connection closed.
+2026-04-22 17:28:09 | INFO     | ui.main_window | MainWindow: shutdown complete.

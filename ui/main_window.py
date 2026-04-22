@@ -34,19 +34,20 @@ import threading
 from datetime import datetime, timezone
 from typing import Optional
 
-from PySide6.QtCore    import Qt, QTimer, Slot
+from PySide6.QtCore    import QLocale, Qt, QSettings, QTimer, Slot
 from PySide6.QtGui     import QColor, QFont, QIcon
 from PySide6.QtWidgets import (
-    QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QListWidget,
-    QListWidgetItem, QMainWindow, QMessageBox, QPushButton, QScrollArea,
-    QSizePolicy, QSplitter, QVBoxLayout, QWidget,
+    QDialog, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel,
+    QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QProgressBar,
+    QPushButton, QScrollArea, QSizePolicy, QSplitter, QVBoxLayout, QWidget,
 )
 
 from batch_state import BatchStateManager
 from database    import DatabaseManager
 from pipeline    import CameraWorker
-from ui.frame_widget  import FrameWidget
-from ui.db_viewer     import DbViewerDialog
+from ui.frame_widget          import FrameWidget
+from ui.db_viewer             import DbViewerDialog
+from ui.camera_select_dialog  import CameraSelectDialog
 
 logger = logging.getLogger(__name__)
 
@@ -84,17 +85,15 @@ class MainWindow(QMainWindow):
         self.resize(1280, 760)
         self.setMinimumSize(900, 600)
 
+        # ── Persisted settings ─────────────────────────────────────────────
+        self._settings     = QSettings()   # uses app/org name from main.py
+        self._camera_index = int(self._settings.value("camera/index", CAMERA_INDEX))
+
         # ── Backend singletons ─────────────────────────────────────────────
         self._db          = DatabaseManager()
         self._db.cleanup_old_data()   # cleanup ทุกครั้งที่เปิดโปรแกรม
         self._batch_state = BatchStateManager(db=self._db)
-        self._worker      = CameraWorker(
-            batch_state    = self._batch_state,
-            db             = self._db,
-            camera_index   = CAMERA_INDEX,
-            trigger_mode   = TRIGGER_MODE,
-            timer_interval = TIMER_INTERVAL,
-        )
+        self._worker      = self._build_worker(self._camera_index)
 
         # ── State ──────────────────────────────────────────────────────────
         self._in_result_view  = False
@@ -109,10 +108,7 @@ class MainWindow(QMainWindow):
         self._apply_stylesheet()
 
         # ── Connect signals ────────────────────────────────────────────────
-        self._worker.frame_ready.connect(self._on_frame_ready)
-        self._worker.result_ready.connect(self._on_result)
-        self._worker.status_changed.connect(self._on_status)
-        self._worker.error_occurred.connect(self._on_worker_error)
+        self._connect_worker_signals()
 
         # ── Load existing history + sync counters ──────────────────────────
         state = self._batch_state.get_state()
@@ -175,6 +171,19 @@ class MainWindow(QMainWindow):
         self._status_text.setObjectName("statusText")
         layout.addWidget(self._status_text)
 
+        # Inference time indicator (updates per inspection)
+        self._inference_label = QLabel("⏱  — ms")
+        self._inference_label.setObjectName("inferenceLabel")
+        self._inference_label.setToolTip("เวลาประมวลผล inspection ล่าสุด")
+        layout.addWidget(self._inference_label)
+
+        cam_btn = QPushButton("📷  Camera")
+        cam_btn.setObjectName("dbBtn")   # ใช้ style เดียวกับ DB button
+        cam_btn.setFixedHeight(30)
+        cam_btn.setToolTip("เลือก/เปลี่ยนกล้องที่ใช้")
+        cam_btn.clicked.connect(self._open_camera_select)
+        layout.addWidget(cam_btn)
+
         db_btn = QPushButton("🗄  DB")
         db_btn.setObjectName("dbBtn")
         db_btn.setFixedHeight(30)
@@ -205,22 +214,22 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Frame view area (relative container for LIVE badge overlay)
-        view_container = QWidget()
-        view_container.setObjectName("viewContainer")
-        view_layout = QVBoxLayout(view_container)
+        # Frame view area (relative container for LIVE badge overlay + NG flash)
+        self._view_container = QWidget()
+        self._view_container.setObjectName("viewContainer")
+        view_layout = QVBoxLayout(self._view_container)
         view_layout.setContentsMargins(0, 0, 0, 0)
 
         self._frame_widget = FrameWidget()
         view_layout.addWidget(self._frame_widget)
 
         # LIVE badge — absolute positioned over the frame widget
-        self._live_badge = QLabel("● LIVE", view_container)
+        self._live_badge = QLabel("● LIVE", self._view_container)
         self._live_badge.setObjectName("liveBadge")
         self._live_badge.move(12, 12)
         self._live_badge.setVisible(False)   # shown after camera opens
 
-        layout.addWidget(view_container, stretch=1)
+        layout.addWidget(self._view_container, stretch=1)
 
         # Mode toggle + action button bar
         capture_bar = QFrame()
@@ -307,6 +316,17 @@ class MainWindow(QMainWindow):
         self._expected_label.setObjectName("expectedLabel")
         exp_row.addWidget(self._expected_label, stretch=1)
         c_layout.addLayout(exp_row)
+
+        # Progress bar — แสดงความคืบหน้าเทียบกับ expected_total
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setObjectName("batchProgress")
+        self._progress_bar.setTextVisible(True)
+        self._progress_bar.setFormat("%v / %m  (%p%)")
+        self._progress_bar.setFixedHeight(18)
+        # Force English locale เพื่อให้ใช้เลขอารบิก (0-9) แทนเลขไทย (๐-๙)
+        self._progress_bar.setLocale(QLocale(QLocale.English, QLocale.UnitedStates))
+        self._progress_bar.setVisible(False)   # ซ่อนจนกว่าจะ set expected
+        c_layout.addWidget(self._progress_bar)
 
         self._missing_label = QLabel("")
         self._missing_label.setAlignment(Qt.AlignCenter)
@@ -412,6 +432,13 @@ class MainWindow(QMainWindow):
         self._live_badge.setVisible(False)
         self._frame_widget.set_result_frame(result["image_b64"], result["detections"])
 
+        # Update inference time indicator (สีแดงถ้าช้าผิดปกติ >500ms)
+        ms = result.get("inference_ms")
+        if ms is not None:
+            color = "#ff1744" if ms > 500 else ("#ffa726" if ms > 250 else "#7a82a0")
+            self._inference_label.setText(f"⏱  {ms:.0f} ms")
+            self._inference_label.setStyleSheet(f"color: {color};")
+
         # Update batch counters
         self._update_counters(result["batch"])
 
@@ -428,6 +455,10 @@ class MainWindow(QMainWindow):
             f"#captureBtn {{ border: 2px solid {flash_color}; }}"
         )
         QTimer.singleShot(600, lambda: self._capture_btn.setStyleSheet(""))
+
+        # Visual NG alert — flash red border around frame for 500ms
+        if verdict == "NG":
+            self._flash_ng_alert()
 
         # Re-enable active button
         self._capture_btn.setEnabled(True)
@@ -474,6 +505,33 @@ class MainWindow(QMainWindow):
         self._upload_btn.setEnabled(True)
         self._upload_btn.setText("🖼   Upload & Inspect")
 
+    @Slot(bool)
+    def _on_camera_health(self, online: bool) -> None:
+        """
+        Camera online/offline indicator.
+        - online=False: แสดง "🔴 Camera offline" + disable capture button
+        - online=True : กลับมา "Camera online" + enable capture
+        (ไม่เด้ง dialog เพราะ offline ไม่ใช่ fatal — recover เองได้)
+        """
+        if self._upload_mode:
+            return   # Upload mode ไม่สนกล้อง
+
+        if online:
+            self._status_dot.setStyleSheet(
+                f"color: {_STATUS_COLORS['connected']}; font-size: 14px;"
+            )
+            self._status_text.setText("Camera online")
+            self._capture_btn.setEnabled(True)
+            logger.info("UI: camera back online")
+        else:
+            self._status_dot.setStyleSheet(
+                f"color: {_STATUS_COLORS['error']}; font-size: 14px;"
+            )
+            self._status_text.setText("🔴 Camera offline")
+            self._capture_btn.setEnabled(False)
+            self._live_badge.setVisible(False)
+            logger.warning("UI: camera offline")
+
     # ══════════════════════════════════════════════════════════════════════
     # UI update helpers
     # ══════════════════════════════════════════════════════════════════════
@@ -482,6 +540,24 @@ class MainWindow(QMainWindow):
         """Called by _result_timer after RESULT_VIEW_SECS seconds."""
         self._in_result_view = False
         self._live_badge.setVisible(True)
+
+    def _flash_ng_alert(self) -> None:
+        """
+        Visual NG alert: เปลี่ยนกรอบ view_container เป็นแดงหนา ~500ms
+        แล้ว revert กลับ default (ไม่มีเสียง, ไม่บังภาพ)
+        """
+        self._view_container.setStyleSheet(
+            "#viewContainer {"
+            "  background: #0d0f14;"
+            "  border: 4px solid #ff1744;"
+            "  border-radius: 6px;"
+            "}"
+        )
+        # Revert หลัง 500ms — reset เป็น empty string เพื่อให้ใช้ global stylesheet default
+        QTimer.singleShot(
+            500,
+            lambda: self._view_container.setStyleSheet("")
+        )
 
     def _update_counters(self, batch: dict) -> None:
         """Refresh TOTAL / NG / NG Rate / Expected from a batch snapshot dict."""
@@ -502,18 +578,39 @@ class MainWindow(QMainWindow):
         if expected > 0:
             self._expected_label.setText(str(expected))
             diff = expected - total
+
+            # Progress bar — show & colour by state
+            self._progress_bar.setVisible(True)
+            # Cap maximum ไว้ที่ expected แต่ถ้า total เกิน → fill เต็ม + ใช้สีแดง
+            self._progress_bar.setMaximum(expected)
+            self._progress_bar.setValue(min(total, expected))
+
             if diff > 0:
+                bar_color = "#29b6f6"   # ฟ้า — ยังไม่ครบ
                 self._missing_label.setText(f"⚠ ขาดอีก {diff} ชิ้น")
                 self._missing_label.setStyleSheet("color:#ffa726;")
             elif diff < 0:
+                bar_color = "#ff1744"   # แดง — เกินเป้า
                 self._missing_label.setText(f"⚠ เกิน {abs(diff)} ชิ้น")
                 self._missing_label.setStyleSheet("color:#ff1744;")
             else:
+                bar_color = "#00e676"   # เขียว — ครบพอดี
                 self._missing_label.setText("✓ ครบตามเป้า")
                 self._missing_label.setStyleSheet("color:#00e676;")
+
+            self._progress_bar.setStyleSheet(
+                "QProgressBar#batchProgress {"
+                "  background:#141720; border:1px solid #2a2f45;"
+                "  border-radius:4px; color:#e8eaf0;"
+                "  font-family:'Consolas',monospace; font-size:10px;"
+                "  text-align:center;"
+                "}"
+                f"QProgressBar#batchProgress::chunk {{ background:{bar_color}; border-radius:3px; }}"
+            )
         else:
             self._expected_label.setText("—")
             self._missing_label.setText("")
+            self._progress_bar.setVisible(False)
 
         self._batch_id_label.setText(batch.get("id", "—"))
 
@@ -627,6 +724,69 @@ class MainWindow(QMainWindow):
         # Sync in-memory batch state กลับจาก DB หลัง DB Viewer อาจลบ record ไป
         state = self._batch_state.sync_from_db()
         self._update_counters(state)
+
+    # ── Camera management ─────────────────────────────────────────────────
+
+    def _build_worker(self, camera_index: int) -> CameraWorker:
+        """Factory: สร้าง CameraWorker ใหม่ด้วย index ที่กำหนด"""
+        return CameraWorker(
+            batch_state    = self._batch_state,
+            db             = self._db,
+            camera_index   = camera_index,
+            trigger_mode   = TRIGGER_MODE,
+            timer_interval = TIMER_INTERVAL,
+        )
+
+    def _connect_worker_signals(self) -> None:
+        """Connect signals ของ worker ปัจจุบันเข้า slots ของ MainWindow"""
+        self._worker.frame_ready.connect(self._on_frame_ready)
+        self._worker.result_ready.connect(self._on_result)
+        self._worker.status_changed.connect(self._on_status)
+        self._worker.error_occurred.connect(self._on_worker_error)
+        self._worker.camera_health_changed.connect(self._on_camera_health)
+
+    def _open_camera_select(self) -> None:
+        """เปิด dialog เลือกกล้อง → switch ถ้าเลือก index ใหม่"""
+        dialog = CameraSelectDialog(current_index=self._camera_index, parent=self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        new_idx = dialog.selected_index()
+        if new_idx is None or new_idx == self._camera_index:
+            logger.info("Camera select: no change")
+            return
+
+        self._switch_camera(new_idx)
+
+    def _switch_camera(self, new_idx: int) -> None:
+        """
+        Stop worker ปัจจุบัน → สร้าง worker ใหม่ด้วย index ใหม่ → start
+        Persist index ใหม่ลง QSettings ให้ startup ครั้งหน้าใช้อัตโนมัติ
+        """
+        old_idx = self._camera_index
+        logger.info(f"Switching camera: {old_idx} → {new_idx}")
+
+        # แจ้ง user ว่ากำลังเปลี่ยน
+        self._status_text.setText(f"Switching to camera {new_idx}…")
+        self._frame_widget.show_placeholder(f"กำลังเปลี่ยนกล้อง → Camera {new_idx}")
+        self._live_badge.setVisible(False)
+        self._capture_btn.setEnabled(False)
+
+        # Stop worker เก่า
+        self._worker.stop()
+        self._worker.wait(3000)
+
+        # Build + start worker ใหม่
+        self._camera_index = new_idx
+        self._worker       = self._build_worker(new_idx)
+        self._connect_worker_signals()
+        self._worker.start()
+
+        # Persist ลง QSettings
+        self._settings.setValue("camera/index", new_idx)
+        self._settings.sync()
+
+        logger.info(f"Camera switched to {new_idx} (persisted)")
 
     def _set_camera_mode(self) -> None:
         """Switch to Camera mode."""
@@ -783,6 +943,16 @@ class MainWindow(QMainWindow):
             #statusText {
                 font-size: 12px;
                 color: #7a82a0;
+            }
+            #inferenceLabel {
+                font-family: "JetBrains Mono", "Consolas", monospace;
+                font-size: 11px;
+                color: #7a82a0;
+                background: #141720;
+                border: 1px solid #2a2f45;
+                border-radius: 10px;
+                padding: 2px 10px;
+                min-width: 70px;
             }
             #dbBtn {
                 background: transparent;

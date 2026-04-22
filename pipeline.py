@@ -54,6 +54,10 @@ STREAM_FPS         = 20        # live view frame rate cap
 OK_SAMPLE_EVERY_N  = 50        # ทุก N ชิ้น OK ค่อย snap 1 รูป
 MAX_OK_NG_RATIO    = 1.5       # saved_OK / saved_NG ไม่เกินค่านี้ (ป้องกัน storage บวม)
 
+# ── Camera Health Monitor ────────────────────────────────────────────────
+MAX_READ_FAILURES  = 30        # consecutive fails → mark offline (~1-2 วิ)
+READ_FAIL_COOLDOWN = 0.05      # sleep กัน tight-spin 100% CPU ตอน read fail
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FrameBuffer — shared between _read_frames_loop and _emit_frames_loop
@@ -256,10 +260,11 @@ class CameraWorker(QThread):
         error_occurred(str)   — fatal error message
     """
 
-    frame_ready    = Signal(object)   # np.ndarray BGR
-    result_ready   = Signal(dict)
-    status_changed = Signal(str)
-    error_occurred = Signal(str)
+    frame_ready           = Signal(object)   # np.ndarray BGR
+    result_ready          = Signal(dict)
+    status_changed        = Signal(str)
+    error_occurred        = Signal(str)
+    camera_health_changed = Signal(bool)     # True=online, False=offline
 
     def __init__(
         self,
@@ -308,7 +313,8 @@ class CameraWorker(QThread):
         try:
             _t0 = time.perf_counter()
             result = self._inspector.inspect(frame)
-            logger.info(f"CameraWorker: inference done in {(time.perf_counter()-_t0)*1000:.1f} ms")
+            inference_ms = (time.perf_counter() - _t0) * 1000
+            logger.info(f"CameraWorker: inference done in {inference_ms:.1f} ms")
         except Exception as exc:
             logger.error(f"CameraWorker: file inspection error: {exc}", exc_info=True)
             self.status_changed.emit("idle")
@@ -331,9 +337,10 @@ class CameraWorker(QThread):
 
         payload = {
             **result,
-            "piece_id":  piece_id,
-            "timestamp": timestamp,
-            "batch":     batch_snapshot,
+            "piece_id":     piece_id,
+            "timestamp":    timestamp,
+            "batch":        batch_snapshot,
+            "inference_ms": inference_ms,
         }
 
         logger.info(
@@ -413,11 +420,34 @@ class CameraWorker(QThread):
         """
         อ่าน frame จากกล้องตลอดเวลา → เขียนลง FrameBuffer
         ทำงานใน daemon thread — ไม่ block inspection loop
+
+        Health monitor: นับ consecutive read failures
+          - เกิน MAX_READ_FAILURES → emit camera_health_changed(False) ครั้งเดียว
+          - เมื่ออ่านสำเร็จหลัง offline → emit camera_health_changed(True) ครั้งเดียว
         """
+        fail_count = 0
+        is_offline = False
+
         while not self._stop_event.is_set():
             ret, frame = self._cap.read()
+
             if ret and frame is not None:
                 self._frame_buffer.update(frame)
+                if is_offline:
+                    logger.info("CameraWorker: camera recovered ✅")
+                    self.camera_health_changed.emit(True)
+                    is_offline = False
+                fail_count = 0
+            else:
+                fail_count += 1
+                if fail_count == MAX_READ_FAILURES and not is_offline:
+                    logger.warning(
+                        f"CameraWorker: camera offline 🔴 "
+                        f"(after {fail_count} consecutive failed reads)"
+                    )
+                    self.camera_health_changed.emit(False)
+                    is_offline = True
+                time.sleep(READ_FAIL_COOLDOWN)   # กัน tight-spin 100% CPU
 
     def _emit_frames_loop(self) -> None:
         """
@@ -491,7 +521,8 @@ class CameraWorker(QThread):
         try:
             _t0 = time.perf_counter()
             result = self._inspector.inspect(frame_bgr)
-            logger.info(f"CameraWorker: inference done in {(time.perf_counter()-_t0)*1000:.1f} ms")
+            inference_ms = (time.perf_counter() - _t0) * 1000
+            logger.info(f"CameraWorker: inference done in {inference_ms:.1f} ms")
         except Exception as exc:
             logger.error(f"CameraWorker: inspection error: {exc}", exc_info=True)
             self.status_changed.emit("idle")
@@ -515,9 +546,10 @@ class CameraWorker(QThread):
 
         payload = {
             **result,
-            "piece_id":  piece_id,
-            "timestamp": timestamp,
-            "batch":     batch_snapshot,
+            "piece_id":     piece_id,
+            "timestamp":    timestamp,
+            "batch":        batch_snapshot,
+            "inference_ms": inference_ms,
         }
 
         logger.info(
