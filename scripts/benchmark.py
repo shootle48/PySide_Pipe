@@ -25,6 +25,9 @@ import sys
 import time
 from pathlib import Path
 
+# Allow importing from project root when running as: python scripts/benchmark.py
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 logging.basicConfig(level=logging.WARNING)   # ปิด log ระหว่าง benchmark
 
 # ── Optional: psutil สำหรับ CPU/RAM ───────────────────────────────────────
@@ -97,7 +100,7 @@ def run_benchmark(
     รัน PipeInspector.inspect() กับ frame list ซ้ำ n_runs รอบ
     คืน list of latencies (ms)
     """
-    from pipeline import PipeInspector
+    from core.pipeline import PipeInspector
     inspector = PipeInspector()
 
     latencies = []

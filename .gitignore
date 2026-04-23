@@ -1,0 +1,18 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Runtime output (do not commit)
+logs/
+exports/
+data/
+
+# OS
+.DS_Store
+Thumbs.db

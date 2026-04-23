@@ -42,9 +42,9 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QSizePolicy, QSplitter, QVBoxLayout, QWidget,
 )
 
-from batch_state import BatchStateManager
-from database    import DatabaseManager
-from pipeline    import CameraWorker
+from core.batch_state import BatchStateManager
+from core.database    import DatabaseManager
+from core.pipeline    import CameraWorker
 from ui.frame_widget          import FrameWidget
 from ui.db_viewer             import DbViewerDialog
 from ui.camera_select_dialog  import CameraSelectDialog
