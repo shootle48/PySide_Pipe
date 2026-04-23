@@ -13,6 +13,9 @@ logs/
 exports/
 data/
 
+# Claude Code (local dev tools — don't share)
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
