@@ -53,8 +53,8 @@ class DbViewerDialog(QDialog):
         self._row_images:    list[str] = []   # image_b64 per table row (index-aligned)
 
         self.setWindowTitle("Database Viewer")
-        self.resize(1100, 660)
-        self.setMinimumSize(800, 500)
+        self.resize(1200, 780)
+        self.setMinimumSize(900, 600)
 
         self._build_ui()
         self._apply_stylesheet()
@@ -66,20 +66,22 @@ class DbViewerDialog(QDialog):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(10)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(12)
 
         # ── Header bar ─────────────────────────────────────────────────
         header = QHBoxLayout()
+        header.setSpacing(12)
 
-        title = QLabel("🗄   DATABASE VIEWER")
+        title = QLabel("DATABASE VIEWER")
         title.setObjectName("dialogTitle")
         header.addWidget(title)
         header.addStretch()
 
-        refresh_btn = QPushButton("🔄  Refresh")
+        refresh_btn = QPushButton("Refresh")
         refresh_btn.setObjectName("secondaryBtn")
-        refresh_btn.setFixedWidth(110)
+        refresh_btn.setFixedHeight(44)
+        refresh_btn.setMinimumWidth(120)
         refresh_btn.clicked.connect(self._refresh)
         header.addWidget(refresh_btn)
 
@@ -93,14 +95,28 @@ class DbViewerDialog(QDialog):
 
         # ── Main splitter (batches left / inspections right) ───────────
         splitter = QSplitter(Qt.Horizontal)
-        splitter.setHandleWidth(1)
+        splitter.setHandleWidth(2)
         splitter.setChildrenCollapsible(False)
 
         splitter.addWidget(self._build_batch_panel())
         splitter.addWidget(self._build_inspection_panel())
-        splitter.setSizes([280, 820])
+        splitter.setSizes([320, 880])
 
         root.addWidget(splitter, stretch=1)
+
+        # ── Big CLOSE button (easy touch target, factory use) ──────────
+        close_row = QHBoxLayout()
+        close_row.addStretch(1)
+        close_btn = QPushButton("CLOSE")
+        close_btn.setObjectName("closeBtn")
+        close_btn.setFixedHeight(60)
+        close_btn.setMinimumWidth(240)
+        close_btn.setToolTip("ปิดหน้าต่าง Database Viewer  (Esc)")
+        close_btn.setShortcut("Esc")
+        close_btn.clicked.connect(self.accept)
+        close_row.addWidget(close_btn)
+        close_row.addStretch(1)
+        root.addLayout(close_row)
 
     # ── Left: batch list ────────────────────────────────────────────────
 
@@ -119,9 +135,9 @@ class DbViewerDialog(QDialog):
         self._batch_list.currentItemChanged.connect(self._on_batch_selected)
         layout.addWidget(self._batch_list, stretch=1)
 
-        delete_batch_btn = QPushButton("🗑  ลบ Batch นี้")
+        delete_batch_btn = QPushButton("ลบ Batch นี้")
         delete_batch_btn.setObjectName("dangerBtn")
-        delete_batch_btn.setFixedHeight(28)
+        delete_batch_btn.setFixedHeight(44)
         delete_batch_btn.clicked.connect(self._delete_current_batch)
         layout.addWidget(delete_batch_btn)
 
@@ -175,9 +191,10 @@ class DbViewerDialog(QDialog):
         preview_title.setObjectName("sectionTitle")
         title_row.addWidget(preview_title)
         title_row.addStretch()
-        self._fullscreen_btn = QPushButton("⛶  ขยาย")
+        self._fullscreen_btn = QPushButton("ขยายรูป")
         self._fullscreen_btn.setObjectName("secondaryBtn")
-        self._fullscreen_btn.setFixedHeight(22)
+        self._fullscreen_btn.setFixedHeight(36)
+        self._fullscreen_btn.setMinimumWidth(120)
         self._fullscreen_btn.setEnabled(False)
         self._fullscreen_btn.clicked.connect(self._open_fullscreen)
         title_row.addWidget(self._fullscreen_btn)
@@ -212,25 +229,29 @@ class DbViewerDialog(QDialog):
         bottom.addWidget(self._stat_rate)
         bottom.addStretch()
 
-        clear_img_btn = QPushButton("🖼  Clear Image")
+        clear_img_btn = QPushButton("Clear Image")
         clear_img_btn.setObjectName("secondaryBtn")
+        clear_img_btn.setFixedHeight(44)
         clear_img_btn.setToolTip("เคลียร์รูปของ record ที่เลือก (เก็บ metadata ไว้)")
         clear_img_btn.clicked.connect(self._clear_selected_image)
         bottom.addWidget(clear_img_btn)
 
-        delete_row_btn = QPushButton("🗑  ลบ Record")
+        delete_row_btn = QPushButton("ลบ Record")
         delete_row_btn.setObjectName("dangerBtn")
+        delete_row_btn.setFixedHeight(44)
         delete_row_btn.setToolTip("ลบ inspection record ที่เลือกออกทั้งหมด")
         delete_row_btn.clicked.connect(self._delete_selected_record)
         bottom.addWidget(delete_row_btn)
 
-        export_btn = QPushButton("📄  Export CSV")
+        export_btn = QPushButton("Export CSV")
         export_btn.setObjectName("secondaryBtn")
+        export_btn.setFixedHeight(44)
         export_btn.clicked.connect(self._export_csv)
         bottom.addWidget(export_btn)
 
-        export_ds_btn = QPushButton("📦  Export Dataset")
+        export_ds_btn = QPushButton("Export Dataset")
         export_ds_btn.setObjectName("secondaryBtn")
+        export_ds_btn.setFixedHeight(44)
         export_ds_btn.setToolTip("Export รูป + annotations สำหรับทำ dataset train model")
         export_ds_btn.clicked.connect(self._export_dataset)
         bottom.addWidget(export_ds_btn)
@@ -256,9 +277,9 @@ class DbViewerDialog(QDialog):
             )
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, b["id"])
-            item.setFont(QFont("Consolas", 10))
+            item.setFont(QFont("Consolas", 12))
             if b["is_active"]:
-                item.setForeground(QColor("#29b6f6"))
+                item.setForeground(QColor("#1565c0"))
             self._batch_list.addItem(item)
 
         if self._batch_list.count() > 0:
@@ -284,11 +305,13 @@ class DbViewerDialog(QDialog):
             # Verdict (coloured)
             verdict_item = QTableWidgetItem(row_data["verdict"])
             verdict_item.setTextAlignment(Qt.AlignCenter)
+            verdict_item.setFont(QFont("Segoe UI", 12, QFont.Bold))
             if row_data["verdict"] == "NG":
-                verdict_item.setForeground(QColor("#ff1744"))
-                verdict_item.setBackground(QColor("#1f1520"))
+                verdict_item.setForeground(QColor("#c62828"))
+                verdict_item.setBackground(QColor("#ffebee"))
             else:
-                verdict_item.setForeground(QColor("#00e676"))
+                verdict_item.setForeground(QColor("#2e7d32"))
+                verdict_item.setBackground(QColor("#e8f5e9"))
             self._table.setItem(row_idx, 1, verdict_item)
 
             # Confidence
@@ -321,7 +344,7 @@ class DbViewerDialog(QDialog):
 
     def _set_cell(self, row: int, col: int, text: str) -> None:
         item = QTableWidgetItem(text)
-        item.setFont(QFont("Consolas", 10))
+        item.setFont(QFont("Consolas", 12))
         self._table.setItem(row, col, item)
 
     def _update_stats_bar(self, total: int, ng: int) -> None:
@@ -388,20 +411,46 @@ class DbViewerDialog(QDialog):
 
     @Slot()
     def _open_fullscreen(self) -> None:
-        """เปิดภาพเต็มจอใน QDialog แยก"""
+        """เปิดภาพเต็มจอใน QDialog แยก
+
+        Multiple close paths (สำคัญมาก — ลูกค้า factory ไม่ควรติดอยู่ในหน้านี้):
+          • กดปุ่ม CLOSE ด้านล่าง  (ใหญ่ 72px — มองเห็นง่ายบน touchscreen)
+          • กด Esc บน keyboard
+          • แตะ/คลิกที่ตัวรูปภาพ (ทั้งพื้นที่)
+          • ปุ่ม X ที่ title bar ของ window
+        """
         if self._current_pixmap is None:
             return
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("NG Image — Fullscreen")
+        dlg.setWindowTitle("NG Image — แตะรูปเพื่อปิด หรือกด Esc")
         dlg.showMaximized()
 
         layout = QVBoxLayout(dlg)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
+        # ── Hint bar — informs user how to exit ─────────────────────────
+        hint = QLabel("แตะที่รูปเพื่อปิด  •  หรือกดปุ่ม CLOSE ด้านล่าง  •  หรือกด Esc")
+        hint.setAlignment(Qt.AlignCenter)
+        hint.setStyleSheet("""
+            background: #0d47a1;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            padding: 8px;
+        """)
+        layout.addWidget(hint)
+
+        # ── Image area — clickable-anywhere-to-close ────────────────────
         img_label = QLabel()
         img_label.setAlignment(Qt.AlignCenter)
-        img_label.setStyleSheet("background: #0d0f14;")
+        img_label.setStyleSheet("background: #1a1d23;")   # keep dark backdrop for photo
+        img_label.setCursor(Qt.PointingHandCursor)
+        img_label.setToolTip("คลิกที่ภาพเพื่อปิดหน้าต่าง")
+        # Click anywhere on the image closes the dialog
+        img_label.mousePressEvent = lambda ev: dlg.close()
         screen = dlg.screen().availableGeometry()
         img_label.setPixmap(
             self._current_pixmap.scaled(
@@ -410,11 +459,25 @@ class DbViewerDialog(QDialog):
                 Qt.SmoothTransformation,
             )
         )
-        layout.addWidget(img_label)
+        layout.addWidget(img_label, stretch=1)
 
-        close_btn = QPushButton("✕  ปิด  (หรือกด Esc)")
-        close_btn.setObjectName("secondaryBtn")
-        close_btn.setFixedHeight(36)
+        # ── Big CLOSE button — easy to hit on touchscreen ───────────────
+        close_btn = QPushButton("CLOSE   (หรือกด Esc / แตะที่รูป)")
+        close_btn.setObjectName("closeBtn")
+        close_btn.setFixedHeight(72)
+        close_btn.setShortcut("Esc")
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: #1565c0;
+                color: #ffffff;
+                border: none;
+                font-size: 18px;
+                font-weight: bold;
+                letter-spacing: 2px;
+            }
+            QPushButton:hover  { background: #1976d2; }
+            QPushButton:pressed { background: #0d47a1; }
+        """)
         close_btn.clicked.connect(dlg.close)
         layout.addWidget(close_btn)
 
@@ -643,11 +706,11 @@ class DbViewerDialog(QDialog):
 
         msg = (
             f"Saved to:\n{out_dir}\n\n"
-            f"✅ Images saved: {saved_images}\n"
-            f"📝 Annotations: {len(csv_rows)} rows\n"
+            f"Images saved : {saved_images}\n"
+            f"Annotations  : {len(csv_rows)} rows\n"
         )
         if failed:
-            msg += f"⚠ Failed: {failed} images\n"
+            msg += f"Failed       : {failed} images\n"
         QMessageBox.information(self, "Export Dataset Complete", msg)
 
     # ══════════════════════════════════════════════════════════════════════
@@ -655,161 +718,220 @@ class DbViewerDialog(QDialog):
     # ══════════════════════════════════════════════════════════════════════
 
     def _apply_stylesheet(self) -> None:
+        """Light industrial theme — สำหรับ factory touchscreen (14")"""
         self.setStyleSheet("""
             QDialog, QWidget {
-                background: #0d0f14;
-                color: #e8eaf0;
+                background: #eef0f3;
+                color: #1a1d23;
                 font-family: "Segoe UI", system-ui, sans-serif;
-                font-size: 13px;
+                font-size: 14px;
             }
 
             #dialogTitle {
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 14px;
+                font-size: 17px;
                 font-weight: bold;
-                letter-spacing: 2px;
-                color: #e8eaf0;
+                letter-spacing: 1px;
+                color: #1a1d23;
             }
 
             #divider {
-                color: #2a2f45;
-                background: #2a2f45;
+                color: #cbd1d9;
+                background: #cbd1d9;
                 max-height: 1px;
             }
 
             #sectionTitle {
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 10px;
+                font-size: 12px;
                 font-weight: bold;
                 letter-spacing: 2px;
-                color: #7a82a0;
+                color: #52606d;
+                text-transform: uppercase;
             }
 
             /* Batch list */
             #batchList {
-                background: #141720;
-                border: 1px solid #2a2f45;
+                background: #ffffff;
+                border: 1px solid #cbd1d9;
                 border-radius: 6px;
                 font-family: "Consolas", monospace;
-                font-size: 11px;
+                font-size: 12px;
+                padding: 2px;
             }
             #batchList::item {
-                padding: 8px 10px;
-                border-bottom: 1px solid #1c1f2e;
+                padding: 12px 10px;
+                border-bottom: 1px solid #eef0f3;
+                color: #1a1d23;
             }
             #batchList::item:selected {
-                background: #1c2a3a;
-                border-left: 3px solid #29b6f6;
+                background: #e3f2fd;
+                border-left: 4px solid #1565c0;
+                color: #0d47a1;
             }
-            #batchList::item:hover {
-                background: #1c1f2e;
+            #batchList::item:hover:!selected {
+                background: #f1f3f6;
             }
 
             /* Inspection table */
             #inspectionTable {
-                background: #141720;
-                border: 1px solid #2a2f45;
+                background: #ffffff;
+                border: 1px solid #cbd1d9;
                 border-radius: 6px;
-                gridline-color: #2a2f45;
+                gridline-color: #e3e6eb;
                 font-family: "Consolas", monospace;
-                font-size: 11px;
-                alternate-background-color: #1c1f2e;
+                font-size: 13px;
+                alternate-background-color: #f7f8fa;
+                color: #1a1d23;
             }
             #inspectionTable::item {
-                padding: 4px 8px;
+                padding: 10px 8px;
             }
             #inspectionTable::item:selected {
-                background: #1c2a3a;
+                background: #e3f2fd;
+                color: #0d47a1;
             }
             QHeaderView::section {
-                background: #1c1f2e;
-                color: #7a82a0;
+                background: #f1f3f6;
+                color: #1a1d23;
                 border: none;
-                border-bottom: 1px solid #2a2f45;
-                padding: 6px 8px;
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 10px;
+                border-bottom: 2px solid #cbd1d9;
+                border-right: 1px solid #e3e6eb;
+                padding: 12px 8px;
+                font-size: 12px;
                 font-weight: bold;
                 letter-spacing: 1px;
+                text-transform: uppercase;
             }
 
             /* Stats */
             #statLabel {
                 font-family: "Consolas", monospace;
-                font-size: 12px;
-                color: #7a82a0;
+                font-size: 14px;
+                font-weight: bold;
+                color: #1a1d23;
+                padding: 4px 8px;
             }
 
-            /* Buttons */
+            /* Buttons — secondary (outline blue) */
             #secondaryBtn {
-                background: transparent;
-                color: #7a82a0;
-                border: 1px solid #2a2f45;
-                border-radius: 4px;
-                font-size: 12px;
-                padding: 5px 12px;
+                background: #ffffff;
+                color: #1565c0;
+                border: 2px solid #1565c0;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 8px 16px;
             }
             #secondaryBtn:hover {
-                background: #1c1f2e;
-                color: #e8eaf0;
-                border-color: #3a4060;
+                background: #e3f2fd;
+            }
+            #secondaryBtn:pressed {
+                background: #bbdefb;
+            }
+            #secondaryBtn:disabled {
+                color: #a8b0ba;
+                border-color: #cbd1d9;
+                background: #eef0f3;
             }
 
-            /* Danger button */
+            /* Danger button (outline red) */
             #dangerBtn {
-                background: transparent;
-                color: #ff1744;
-                border: 1px solid #ff174466;
-                border-radius: 4px;
-                font-size: 12px;
-                padding: 5px 12px;
+                background: #ffffff;
+                color: #c62828;
+                border: 2px solid #c62828;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 8px 16px;
             }
             #dangerBtn:hover {
-                background: #ff174422;
-                border-color: #ff1744;
+                background: #ffebee;
             }
+            #dangerBtn:pressed {
+                background: #ffcdd2;
+            }
+
+            /* Big primary CLOSE button */
+            #closeBtn {
+                background: #1565c0;
+                color: #ffffff;
+                border: 2px solid #0d47a1;
+                border-radius: 10px;
+                font-size: 17px;
+                font-weight: bold;
+                letter-spacing: 2px;
+                padding: 12px 24px;
+            }
+            #closeBtn:hover  { background: #1976d2; }
+            #closeBtn:pressed { background: #0d47a1; }
 
             /* Image preview */
             #previewPanel {
-                background: #141720;
-                border: 1px solid #2a2f45;
+                background: #ffffff;
+                border: 1px solid #cbd1d9;
                 border-radius: 6px;
                 padding: 4px;
             }
             #imagePreview {
-                background: #0d0f14;
+                background: #1a1d23;
                 border-radius: 4px;
-                color: #4a5070;
-                font-size: 11px;
+                color: #a8b0ba;
+                font-size: 13px;
             }
 
             /* Splitter */
             QSplitter::handle {
-                background: #2a2f45;
-                width: 1px;
+                background: #cbd1d9;
+                width: 2px;
             }
 
-            /* Scrollbars */
+            /* Scrollbars (bigger for touch) */
             QScrollBar:vertical {
-                background: transparent;
-                width: 6px;
+                background: #eef0f3;
+                width: 14px;
+                border-radius: 7px;
             }
             QScrollBar::handle:vertical {
-                background: #2a2f45;
-                border-radius: 3px;
-                min-height: 20px;
+                background: #a8b0ba;
+                border-radius: 7px;
+                min-height: 40px;
             }
+            QScrollBar::handle:vertical:hover { background: #52606d; }
             QScrollBar::add-line:vertical,
             QScrollBar::sub-line:vertical { height: 0; }
             QScrollBar:horizontal {
-                background: transparent;
-                height: 6px;
+                background: #eef0f3;
+                height: 14px;
+                border-radius: 7px;
             }
             QScrollBar::handle:horizontal {
-                background: #2a2f45;
-                border-radius: 3px;
-                min-width: 20px;
+                background: #a8b0ba;
+                border-radius: 7px;
+                min-width: 40px;
             }
+            QScrollBar::handle:horizontal:hover { background: #52606d; }
             QScrollBar::add-line:horizontal,
             QScrollBar::sub-line:horizontal { width: 0; }
+
+            /* Message/Confirm dialogs spawned from this viewer */
+            QMessageBox {
+                background: #ffffff;
+                font-size: 14px;
+            }
+            QMessageBox QLabel {
+                color: #1a1d23;
+                font-size: 14px;
+            }
+            QMessageBox QPushButton {
+                background: #1565c0;
+                color: #ffffff;
+                border: 2px solid #0d47a1;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+                min-width: 100px;
+                min-height: 38px;
+                padding: 6px 18px;
+            }
+            QMessageBox QPushButton:hover  { background: #1976d2; }
+            QMessageBox QPushButton:pressed { background: #0d47a1; }
         """)

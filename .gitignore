@@ -12,9 +12,11 @@ env/
 logs/
 exports/
 data/
-
+Dataset_pipe
 # Claude Code (local dev tools — don't share)
 .claude/
+DEPLOYMENT.md
+FAILSAFE.md
 
 # OS
 .DS_Store

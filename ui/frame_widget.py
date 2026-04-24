@@ -122,7 +122,10 @@ class FrameWidget(QWidget):
         painter.setRenderHint(QPainter.SmoothPixmapTransform)
 
         rect = self.rect()
-        painter.fillRect(rect, QColor("#0d0f14"))
+        # Keep the image backdrop dark so the camera feed looks like a monitor
+        # (consistent with video/CCTV conventions) even though the surrounding
+        # UI is light-themed for factory ambient light.
+        painter.fillRect(rect, QColor("#1a1d23"))
 
         if self._is_placeholder or self._pixmap is None:
             self._draw_placeholder(painter, rect)
@@ -146,19 +149,19 @@ class FrameWidget(QWidget):
 
     def _draw_placeholder(self, painter: QPainter, rect) -> None:
         """Draw centred placeholder text when no frame is available."""
-        painter.setPen(QColor("#4a5070"))
-        font = QFont("Segoe UI", 13)
+        painter.setPen(QColor("#a8b0ba"))
+        font = QFont("Segoe UI", 16)
         painter.setFont(font)
         painter.drawText(rect, Qt.AlignCenter, self._placeholder_text)
 
-        # Camera icon (simplified SVG-style with QPainter)
-        cx, cy = rect.center().x(), rect.center().y() - 40
-        pen = QPen(QColor("#2a3050"), 2)
+        # Camera icon (simplified SVG-style with QPainter) — brighter for contrast on dark viewport
+        cx, cy = rect.center().x(), rect.center().y() - 50
+        pen = QPen(QColor("#52606d"), 3)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
-        painter.drawRoundedRect(cx - 30, cy - 18, 60, 36, 4, 4)
-        painter.drawEllipse(cx - 11, cy - 11, 22, 22)
-        painter.drawEllipse(cx - 5, cy - 5, 10, 10)
+        painter.drawRoundedRect(cx - 40, cy - 24, 80, 48, 6, 6)
+        painter.drawEllipse(cx - 15, cy - 15, 30, 30)
+        painter.drawEllipse(cx - 7, cy - 7, 14, 14)
 
     def _draw_detections(
         self,

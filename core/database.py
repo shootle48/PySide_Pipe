@@ -19,7 +19,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DB_PATH = Path(__file__).parent / "data" / "pipe_inspector.db"
+DEFAULT_DB_PATH = Path(__file__).parent.parent / "data" / "pipe_inspector.db"
 
 # ── Storage Threshold Config ───────────────────────────────────────────────
 MAX_RECORD_AGE_DAYS = 90     # ลบ record ที่เก่ากว่า 3 เดือน
@@ -207,7 +207,7 @@ class DatabaseManager:
             rows = self._conn.execute(
                 """
                 SELECT piece_id, batch_id, verdict, confidence, timestamp,
-                       detections, image_b64
+                detections, image_b64
                 FROM   inspections
                 WHERE  image_b64 IS NOT NULL AND image_b64 != ''
                 ORDER  BY timestamp ASC

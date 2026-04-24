@@ -369,7 +369,7 @@ class CameraWorker(QThread):
         if not self._cap.isOpened():
             msg = (
                 f"Cannot open camera index {self._camera_index}. "
-                f"Run camera_check.py to find the correct index."
+                # f"Run camera_check.py to find the correct index."
             )
             logger.error(msg)
             self.error_occurred.emit(msg)

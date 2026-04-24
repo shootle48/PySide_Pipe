@@ -39,7 +39,8 @@ from PySide6.QtGui     import QColor, QFont, QIcon
 from PySide6.QtWidgets import (
     QDialog, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel,
     QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QProgressBar,
-    QPushButton, QScrollArea, QSizePolicy, QSplitter, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSizePolicy, QSplitter, QTabWidget, QVBoxLayout,
+    QWidget,
 )
 
 from core.batch_state import BatchStateManager
@@ -48,22 +49,33 @@ from core.pipeline    import CameraWorker
 from ui.frame_widget          import FrameWidget
 from ui.db_viewer             import DbViewerDialog
 from ui.camera_select_dialog  import CameraSelectDialog
+from ui.maintenance_widget    import MaintenanceWidget
+from core.rs485_worker import RS485InputWorker, MockRS485DIO
+# Note: `rs485_dio` (real hardware) imports lazily — see _init_rs485() below
+# ไม่ import ตรงนี้เพราะต้องใช้ minimalmodbus/pyserial ที่ไม่มีบน Windows dev
 
 logger = logging.getLogger(__name__)
 
 # ── Config ─────────────────────────────────────────────────────────────────
-CAMERA_INDEX     = 0
+CAMERA_INDEX     = 2
 TRIGGER_MODE     = "manual"    # "manual" | "timer" | "gpio"
 TIMER_INTERVAL   = 6.0
 RESULT_VIEW_SECS = 4           # seconds to show result before returning to live
 
-# ── Status colours (match CSS variables) ──────────────────────────────────
+# RS485 I/O integration (trigger via external sensor/PLC)
+#   "off"  — ไม่ใช้ RS485 เลย (dev บน Windows ที่ไม่มี hardware)
+#   "mock" — ใช้ MockRS485DIO (test WFH — สุ่มยิง pulse ทุก 2s)
+#   "real" — ใช้ RS485DIO จริง (Jetson + USB-to-RS485 dongle)
+RS485_MODE       = "off"
+RS485_WATCH_BITS = [0]         # inputs ที่ watch (I0 = trigger sensor default)
+
+# ── Status colours (industrial HMI palette — high contrast for factory) ──
 _STATUS_COLORS = {
-    "idle":       "#546e7a",
-    "scanning":   "#29b6f6",
-    "processing": "#ffa726",
-    "connected":  "#00e676",
-    "error":      "#ff1744",
+    "idle":       "#52606d",   # medium gray
+    "scanning":   "#0288d1",   # deep cyan/blue
+    "processing": "#ef6c00",   # dark orange
+    "connected":  "#2e7d32",   # dark green (WCAG AA on white)
+    "error":      "#c62828",   # dark red
 }
 
 
@@ -120,6 +132,66 @@ class MainWindow(QMainWindow):
         self._worker.start()
         logger.info("CameraWorker started.")
 
+        # ── Start RS485 input worker (optional) ────────────────────────────
+        self._io_worker: Optional[RS485InputWorker] = None
+        self._io_source = None   # keep reference so GC doesn't kill mock
+        self._init_rs485()
+
+    def _init_rs485(self) -> None:
+        """
+        Set up RS485InputWorker based on RS485_MODE config.
+        Off → noop. Mock → fake pulse every 2s. Real → load hardware driver.
+        """
+        if RS485_MODE == "off":
+            logger.info("RS485: disabled (RS485_MODE='off').")
+            return
+
+        if RS485_MODE == "mock":
+            logger.info("RS485: starting in MOCK mode — fake pulse every 2s.")
+            self._io_source = MockRS485DIO(
+                mode="auto_pulse", pulse_bit=0, pulse_interval_s=2.0,
+            )
+
+        elif RS485_MODE == "real":
+            try:
+                from rs485_dio import RS485DIO   # lazy — needs minimalmodbus
+            except ImportError as exc:
+                logger.error(
+                    f"RS485: cannot import rs485_dio ({exc}). "
+                    f"Install `pip install minimalmodbus pyserial` or set RS485_MODE='off'/'mock'."
+                )
+                return
+            try:
+                self._io_source = RS485DIO()
+            except Exception as exc:
+                logger.error(f"RS485: init failed ({exc}). Running without RS485 input.")
+                return
+            logger.info("RS485: real hardware mode OK.")
+
+        else:
+            logger.warning(f"RS485: unknown mode '{RS485_MODE}' — disabled.")
+            return
+
+        self._io_worker = RS485InputWorker(
+            io=self._io_source, watch_bits=RS485_WATCH_BITS,
+        )
+        self._io_worker.pulse_detected.connect(self._on_rs485_pulse)
+        self._io_worker.io_health_changed.connect(self._on_rs485_health)
+        self._io_worker.start()
+
+    @Slot(int)
+    def _on_rs485_pulse(self, bit: int) -> None:
+        """RS485 input rising edge → trigger inspection (เหมือนกด capture)"""
+        logger.info(f"RS485 pulse on bit {bit} → triggering inspection")
+        self._worker.trigger()
+
+    @Slot(bool)
+    def _on_rs485_health(self, online: bool) -> None:
+        if not online:
+            logger.warning("RS485: I/O offline")
+        else:
+            logger.info("RS485: I/O online")
+
     # ══════════════════════════════════════════════════════════════════════
     # UI construction
     # ══════════════════════════════════════════════════════════════════════
@@ -131,23 +203,37 @@ class MainWindow(QMainWindow):
         root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_header())
-        root_layout.addWidget(self._build_main_area(), stretch=1)
+        root_layout.addWidget(self._build_tabs(), stretch=1)
 
         self.setCentralWidget(root)
+
+    def _build_tabs(self) -> QTabWidget:
+        """Wrap main area in tabs: Inspection (default) | Maintenance."""
+        self._tabs = QTabWidget()
+        self._tabs.setObjectName("mainTabs")
+
+        # Tab 1: existing inspection UI
+        self._tabs.addTab(self._build_main_area(), "Inspection")
+
+        # Tab 2: maintenance / calibration
+        self._maintenance = MaintenanceWidget()
+        self._tabs.addTab(self._maintenance, "Maintenance")
+
+        return self._tabs
 
     # ── Header ─────────────────────────────────────────────────────────────
 
     def _build_header(self) -> QFrame:
         header = QFrame()
         header.setObjectName("header")
-        header.setFixedHeight(56)
+        header.setFixedHeight(72)
 
         layout = QHBoxLayout(header)
-        layout.setContentsMargins(20, 0, 20, 0)
-        layout.setSpacing(16)
+        layout.setContentsMargins(24, 0, 24, 0)
+        layout.setSpacing(18)
 
         # Left — App title
-        title = QLabel("🔍  PIPE INSPECTOR")
+        title = QLabel("PIPE INSPECTOR")
         title.setObjectName("appTitle")
         layout.addWidget(title)
 
@@ -172,21 +258,23 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._status_text)
 
         # Inference time indicator (updates per inspection)
-        self._inference_label = QLabel("⏱  — ms")
+        self._inference_label = QLabel("— ms")
         self._inference_label.setObjectName("inferenceLabel")
         self._inference_label.setToolTip("เวลาประมวลผล inspection ล่าสุด")
         layout.addWidget(self._inference_label)
 
-        cam_btn = QPushButton("📷  Camera")
+        cam_btn = QPushButton("Camera")
         cam_btn.setObjectName("dbBtn")   # ใช้ style เดียวกับ DB button
-        cam_btn.setFixedHeight(30)
+        cam_btn.setFixedHeight(44)
+        cam_btn.setMinimumWidth(110)
         cam_btn.setToolTip("เลือก/เปลี่ยนกล้องที่ใช้")
         cam_btn.clicked.connect(self._open_camera_select)
         layout.addWidget(cam_btn)
 
-        db_btn = QPushButton("🗄  DB")
+        db_btn = QPushButton("Database")
         db_btn.setObjectName("dbBtn")
-        db_btn.setFixedHeight(30)
+        db_btn.setFixedHeight(44)
+        db_btn.setMinimumWidth(110)
         db_btn.clicked.connect(self._open_db_viewer)
         layout.addWidget(db_btn)
 
@@ -234,23 +322,23 @@ class MainWindow(QMainWindow):
         # Mode toggle + action button bar
         capture_bar = QFrame()
         capture_bar.setObjectName("captureBar")
-        capture_bar.setFixedHeight(100)
+        capture_bar.setFixedHeight(132)
         bar_layout = QVBoxLayout(capture_bar)
-        bar_layout.setContentsMargins(12, 8, 12, 8)
-        bar_layout.setSpacing(6)
+        bar_layout.setContentsMargins(14, 10, 14, 10)
+        bar_layout.setSpacing(10)
 
         # ── Mode toggle row ────────────────────────────────────────────────
         toggle_row = QHBoxLayout()
-        toggle_row.setSpacing(6)
+        toggle_row.setSpacing(8)
 
-        self._camera_mode_btn = QPushButton("📷  Camera")
+        self._camera_mode_btn = QPushButton("Camera")
         self._camera_mode_btn.setObjectName("modeActive")
-        self._camera_mode_btn.setFixedHeight(28)
+        self._camera_mode_btn.setFixedHeight(44)
         self._camera_mode_btn.clicked.connect(self._set_camera_mode)
 
-        self._upload_mode_btn = QPushButton("🖼  Upload Image")
+        self._upload_mode_btn = QPushButton("Upload Image")
         self._upload_mode_btn.setObjectName("modeInactive")
-        self._upload_mode_btn.setFixedHeight(28)
+        self._upload_mode_btn.setFixedHeight(44)
         self._upload_mode_btn.clicked.connect(self._set_upload_mode)
 
         toggle_row.addWidget(self._camera_mode_btn)
@@ -259,15 +347,15 @@ class MainWindow(QMainWindow):
         bar_layout.addLayout(toggle_row)
 
         # ── Action button (swaps between Camera / Upload) ──────────────────
-        self._capture_btn = QPushButton("📷   Capture & Inspect")
+        self._capture_btn = QPushButton("CAPTURE & INSPECT")
         self._capture_btn.setObjectName("captureBtn")
-        self._capture_btn.setFixedHeight(44)
+        self._capture_btn.setFixedHeight(64)
         self._capture_btn.clicked.connect(self._trigger_capture)
         bar_layout.addWidget(self._capture_btn)
 
-        self._upload_btn = QPushButton("🖼   Upload & Inspect")
+        self._upload_btn = QPushButton("UPLOAD & INSPECT")
         self._upload_btn.setObjectName("uploadBtn")
-        self._upload_btn.setFixedHeight(44)
+        self._upload_btn.setFixedHeight(64)
         self._upload_btn.clicked.connect(self._upload_and_inspect)
         self._upload_btn.setVisible(False)
         bar_layout.addWidget(self._upload_btn)
@@ -280,11 +368,11 @@ class MainWindow(QMainWindow):
     def _build_info_panel(self) -> QWidget:
         panel = QWidget()
         panel.setObjectName("infoPanel")
-        panel.setFixedWidth(370)
+        panel.setFixedWidth(420)
 
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(0, 10, 10, 10)
+        layout.setSpacing(10)
 
         # ── Batch counters card ────────────────────────────────────────────
         counters_card = self._make_card("BATCH COUNTERS")
@@ -293,8 +381,8 @@ class MainWindow(QMainWindow):
         nums_row = QHBoxLayout()
         nums_row.setSpacing(10)
 
-        self._counter_total = self._make_big_counter("TOTAL", "#e8eaf0")
-        self._counter_ng    = self._make_big_counter("NG",    "#ff1744")
+        self._counter_total = self._make_big_counter("TOTAL", "#1a1d23")
+        self._counter_ng    = self._make_big_counter("NG",    "#c62828")
         nums_row.addWidget(self._counter_total[0])
         nums_row.addWidget(self._counter_ng[0])
         c_layout.addLayout(nums_row)
@@ -322,7 +410,7 @@ class MainWindow(QMainWindow):
         self._progress_bar.setObjectName("batchProgress")
         self._progress_bar.setTextVisible(True)
         self._progress_bar.setFormat("%v / %m  (%p%)")
-        self._progress_bar.setFixedHeight(18)
+        self._progress_bar.setFixedHeight(28)
         # Force English locale เพื่อให้ใช้เลขอารบิก (0-9) แทนเลขไทย (๐-๙)
         self._progress_bar.setLocale(QLocale(QLocale.English, QLocale.UnitedStates))
         self._progress_bar.setVisible(False)   # ซ่อนจนกว่าจะ set expected
@@ -334,13 +422,13 @@ class MainWindow(QMainWindow):
         c_layout.addWidget(self._missing_label)
 
         # Set / Edit expected button
-        self._expected_btn = QPushButton("✎   Set Expected")
+        self._expected_btn = QPushButton("Set Expected")
         self._expected_btn.setObjectName("secondaryBtn")
         self._expected_btn.clicked.connect(self._set_expected)
         c_layout.addWidget(self._expected_btn)
 
         # Reset button
-        self._reset_btn = QPushButton("↺   Reset Batch")
+        self._reset_btn = QPushButton("Reset Batch")
         self._reset_btn.setObjectName("resetBtn")
         self._reset_btn.clicked.connect(self._reset_batch)
         c_layout.addWidget(self._reset_btn)
@@ -418,6 +506,8 @@ class MainWindow(QMainWindow):
         if not self._in_result_view:
             self._frame_widget.set_live_frame(frame_bgr)
             self._live_badge.setVisible(True)
+        # Always forward to maintenance tab (drift monitor runs in background)
+        self._maintenance.on_frame(frame_bgr)
 
     @Slot(dict)
     def _on_result(self, result: dict) -> None:
@@ -435,8 +525,8 @@ class MainWindow(QMainWindow):
         # Update inference time indicator (สีแดงถ้าช้าผิดปกติ >500ms)
         ms = result.get("inference_ms")
         if ms is not None:
-            color = "#ff1744" if ms > 500 else ("#ffa726" if ms > 250 else "#7a82a0")
-            self._inference_label.setText(f"⏱  {ms:.0f} ms")
+            color = "#c62828" if ms > 500 else ("#ef6c00" if ms > 250 else "#52606d")
+            self._inference_label.setText(f"{ms:.0f} ms")
             self._inference_label.setStyleSheet(f"color: {color};")
 
         # Update batch counters
@@ -450,9 +540,9 @@ class MainWindow(QMainWindow):
 
         # Flash capture button
         verdict = result["verdict"]
-        flash_color = "#00e676" if verdict == "OK" else "#ff1744"
+        flash_color = "#2e7d32" if verdict == "OK" else "#c62828"
         self._capture_btn.setStyleSheet(
-            f"#captureBtn {{ border: 2px solid {flash_color}; }}"
+            f"#captureBtn {{ border: 3px solid {flash_color}; }}"
         )
         QTimer.singleShot(600, lambda: self._capture_btn.setStyleSheet(""))
 
@@ -462,9 +552,9 @@ class MainWindow(QMainWindow):
 
         # Re-enable active button
         self._capture_btn.setEnabled(True)
-        self._capture_btn.setText("📷   Capture & Inspect")
+        self._capture_btn.setText("CAPTURE & INSPECT")
         self._upload_btn.setEnabled(True)
-        self._upload_btn.setText("🖼   Upload & Inspect")
+        self._upload_btn.setText("UPLOAD & INSPECT")
 
         # Return to live view after delay
         self._result_timer.start(RESULT_VIEW_SECS * 1000)
@@ -477,17 +567,17 @@ class MainWindow(QMainWindow):
             "scanning":   "Scanning…",
             "processing": "Processing…",
         }
-        color = _STATUS_COLORS.get(state, "#546e7a")
-        self._status_dot.setStyleSheet(f"color: {color}; font-size: 14px;")
+        color = _STATUS_COLORS.get(state, "#52606d")
+        self._status_dot.setStyleSheet(f"color: {color}; font-size: 18px;")
         self._status_text.setText(labels.get(state, state.title()))
 
         # Animate capture button during processing
         if state == "processing":
             self._capture_btn.setEnabled(False)
-            self._capture_btn.setText("⏳  Processing…")
+            self._capture_btn.setText("PROCESSING…")
         elif state == "scanning":
             self._capture_btn.setEnabled(False)
-            self._capture_btn.setText("🔍  Scanning…")
+            self._capture_btn.setText("SCANNING…")
 
     @Slot(str)
     def _on_worker_error(self, message: str) -> None:
@@ -499,17 +589,17 @@ class MainWindow(QMainWindow):
             self._status_text.setText("Upload Mode")
             return
         QMessageBox.critical(self, "Error", message)
-        self._status_dot.setStyleSheet(f"color: {_STATUS_COLORS['error']}; font-size: 14px;")
+        self._status_dot.setStyleSheet(f"color: {_STATUS_COLORS['error']}; font-size: 18px;")
         self._status_text.setText("Error")
         self._capture_btn.setEnabled(False)
         self._upload_btn.setEnabled(True)
-        self._upload_btn.setText("🖼   Upload & Inspect")
+        self._upload_btn.setText("UPLOAD & INSPECT")
 
     @Slot(bool)
     def _on_camera_health(self, online: bool) -> None:
         """
         Camera online/offline indicator.
-        - online=False: แสดง "🔴 Camera offline" + disable capture button
+        - online=False: แสดง "Camera offline" + disable capture button
         - online=True : กลับมา "Camera online" + enable capture
         (ไม่เด้ง dialog เพราะ offline ไม่ใช่ fatal — recover เองได้)
         """
@@ -518,16 +608,16 @@ class MainWindow(QMainWindow):
 
         if online:
             self._status_dot.setStyleSheet(
-                f"color: {_STATUS_COLORS['connected']}; font-size: 14px;"
+                f"color: {_STATUS_COLORS['connected']}; font-size: 18px;"
             )
             self._status_text.setText("Camera online")
             self._capture_btn.setEnabled(True)
             logger.info("UI: camera back online")
         else:
             self._status_dot.setStyleSheet(
-                f"color: {_STATUS_COLORS['error']}; font-size: 14px;"
+                f"color: {_STATUS_COLORS['error']}; font-size: 18px;"
             )
-            self._status_text.setText("🔴 Camera offline")
+            self._status_text.setText("Camera offline")
             self._capture_btn.setEnabled(False)
             self._live_badge.setVisible(False)
             logger.warning("UI: camera offline")
@@ -548,8 +638,8 @@ class MainWindow(QMainWindow):
         """
         self._view_container.setStyleSheet(
             "#viewContainer {"
-            "  background: #0d0f14;"
-            "  border: 4px solid #ff1744;"
+            "  background: #1a1d23;"
+            "  border: 5px solid #c62828;"
             "  border-radius: 6px;"
             "}"
         )
@@ -586,26 +676,26 @@ class MainWindow(QMainWindow):
             self._progress_bar.setValue(min(total, expected))
 
             if diff > 0:
-                bar_color = "#29b6f6"   # ฟ้า — ยังไม่ครบ
-                self._missing_label.setText(f"⚠ ขาดอีก {diff} ชิ้น")
-                self._missing_label.setStyleSheet("color:#ffa726;")
+                bar_color = "#1565c0"   # ฟ้า — ยังไม่ครบ
+                self._missing_label.setText(f"ขาดอีก {diff} ชิ้น")
+                self._missing_label.setStyleSheet("color:#ef6c00; font-weight:bold;")
             elif diff < 0:
-                bar_color = "#ff1744"   # แดง — เกินเป้า
-                self._missing_label.setText(f"⚠ เกิน {abs(diff)} ชิ้น")
-                self._missing_label.setStyleSheet("color:#ff1744;")
+                bar_color = "#c62828"   # แดง — เกินเป้า
+                self._missing_label.setText(f"เกิน {abs(diff)} ชิ้น")
+                self._missing_label.setStyleSheet("color:#c62828; font-weight:bold;")
             else:
-                bar_color = "#00e676"   # เขียว — ครบพอดี
-                self._missing_label.setText("✓ ครบตามเป้า")
-                self._missing_label.setStyleSheet("color:#00e676;")
+                bar_color = "#2e7d32"   # เขียว — ครบพอดี
+                self._missing_label.setText("ครบตามเป้า")
+                self._missing_label.setStyleSheet("color:#2e7d32; font-weight:bold;")
 
             self._progress_bar.setStyleSheet(
                 "QProgressBar#batchProgress {"
-                "  background:#141720; border:1px solid #2a2f45;"
-                "  border-radius:4px; color:#e8eaf0;"
-                "  font-family:'Consolas',monospace; font-size:10px;"
-                "  text-align:center;"
+                "  background:#f1f3f6; border:1px solid #cbd1d9;"
+                "  border-radius:6px; color:#1a1d23;"
+                "  font-family:'Segoe UI',sans-serif; font-size:13px;"
+                "  font-weight:bold; text-align:center;"
                 "}"
-                f"QProgressBar#batchProgress::chunk {{ background:{bar_color}; border-radius:3px; }}"
+                f"QProgressBar#batchProgress::chunk {{ background:{bar_color}; border-radius:5px; }}"
             )
         else:
             self._expected_label.setText("—")
@@ -680,16 +770,17 @@ class MainWindow(QMainWindow):
             time_str = "—"
 
         detail = confs[0]["label"].replace("_", " ") if confs else "No defect"
-        text   = f"  {'✅' if verdict == 'OK' else '❌'}  {piece_id:<20}  {detail:<18}  {time_str}"
+        tag    = "[OK]" if verdict == "OK" else "[NG]"
+        text   = f"  {tag}  {piece_id:<20}  {detail:<18}  {time_str}"
 
         item = QListWidgetItem(text)
-        item.setFont(QFont("Consolas", 10))
+        item.setFont(QFont("Consolas", 12, QFont.Bold))
         if verdict == "NG":
-            item.setForeground(QColor("#ff1744"))
-            item.setBackground(QColor("#1f1520"))
+            item.setForeground(QColor("#c62828"))
+            item.setBackground(QColor("#ffebee"))
         else:
-            item.setForeground(QColor("#00e676"))
-            item.setBackground(QColor("#0a1f14"))
+            item.setForeground(QColor("#2e7d32"))
+            item.setBackground(QColor("#e8f5e9"))
 
         self._history_list.insertItem(0, item)
 
@@ -710,7 +801,7 @@ class MainWindow(QMainWindow):
             })
         if not rows:
             placeholder = QListWidgetItem("  No inspections in this batch yet.")
-            placeholder.setForeground(QColor("#4a5070"))
+            placeholder.setForeground(QColor("#7b8794"))
             self._history_list.addItem(placeholder)
 
     # ══════════════════════════════════════════════════════════════════════
@@ -810,7 +901,7 @@ class MainWindow(QMainWindow):
         self._capture_btn.setVisible(False)
         self._upload_btn.setVisible(True)
         self._upload_btn.setEnabled(True)
-        self._upload_btn.setText("🖼   Upload & Inspect")
+        self._upload_btn.setText("UPLOAD & INSPECT")
         self._live_badge.setVisible(False)
         self._frame_widget.show_placeholder("Upload mode — กดปุ่มด้านล่างเพื่อเลือกรูปภาพ")
         logger.info("Mode: Upload Image")
@@ -818,7 +909,7 @@ class MainWindow(QMainWindow):
     def _trigger_capture(self) -> None:
         """Fire a manual inspection trigger."""
         self._capture_btn.setEnabled(False)
-        self._capture_btn.setText("🔍  Scanning…")
+        self._capture_btn.setText("SCANNING…")
         self._worker.trigger()
 
     def _upload_and_inspect(self) -> None:
@@ -837,7 +928,7 @@ class MainWindow(QMainWindow):
 
         self._file_inspecting = True
         self._upload_btn.setEnabled(False)
-        self._upload_btn.setText("⏳  Processing…")
+        self._upload_btn.setText("PROCESSING…")
 
         def _run():
             try:
@@ -899,6 +990,11 @@ class MainWindow(QMainWindow):
         self._result_timer.stop()
         self._worker.stop()
         self._worker.wait(3000)   # wait up to 3 s for clean exit
+        if self._io_worker is not None:
+            self._io_worker.stop()
+            self._io_worker.wait(2000)
+        if self._io_source is not None and hasattr(self._io_source, "stop"):
+            self._io_source.stop()   # MockRS485DIO has its own pulse thread
         self._db.close()
         logger.info("MainWindow: shutdown complete.")
         event.accept()
@@ -908,299 +1004,392 @@ class MainWindow(QMainWindow):
     # ══════════════════════════════════════════════════════════════════════
 
     def _apply_stylesheet(self) -> None:
-        """Dark theme matching the web dashboard colour tokens."""
+        """
+        Light industrial HMI theme — สำหรับ factory ใช้งานบน 14" touchscreen
+        ภายใต้แสงแรง: พื้นขาว, ตัวอักษรใหญ่, touch target >= 44px,
+        สี contrast สูง (WCAG AA) สำหรับ verdict OK/NG
+        """
         self.setStyleSheet("""
             /* ── Global ───────────────────────────────────────────────── */
             QMainWindow, QWidget {
-                background: #0d0f14;
-                color: #e8eaf0;
+                background: #eef0f3;
+                color: #1a1d23;
                 font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+                font-size: 14px;
+            }
+            QToolTip {
+                background: #1a1d23;
+                color: #ffffff;
+                border: 1px solid #52606d;
+                padding: 6px 10px;
                 font-size: 13px;
+            }
+
+            /* ── Tab Bar ──────────────────────────────────────────────── */
+            QTabWidget#mainTabs::pane {
+                border: none;
+                background: #eef0f3;
+            }
+            QTabBar::tab {
+                background: #dde1e7;
+                color: #52606d;
+                padding: 12px 26px;
+                border: 1px solid #cbd1d9;
+                border-bottom: none;
+                min-width: 160px;
+                font-size: 14px;
+                font-weight: bold;
+                letter-spacing: 0.5px;
+            }
+            QTabBar::tab:selected {
+                background: #ffffff;
+                color: #1565c0;
+                border-bottom: 3px solid #1565c0;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #e6eaf0;
+                color: #1a1d23;
             }
 
             /* ── Header ───────────────────────────────────────────────── */
             #header {
-                background: #141720;
-                border-bottom: 1px solid #2a2f45;
+                background: #ffffff;
+                border-bottom: 2px solid #cbd1d9;
             }
             #appTitle {
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 14px;
+                font-size: 17px;
                 font-weight: bold;
-                letter-spacing: 2px;
-                color: #e8eaf0;
+                letter-spacing: 1px;
+                color: #1a1d23;
             }
             #batchId {
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 12px;
+                font-family: "Consolas", monospace;
+                font-size: 14px;
                 font-weight: bold;
-                color: #29b6f6;
-                background: #29b6f611;
-                border: 1px solid #29b6f633;
-                padding: 2px 10px;
-                border-radius: 12px;
+                color: #ffffff;
+                background: #1565c0;
+                border: 1px solid #0d47a1;
+                padding: 5px 12px;
+                border-radius: 6px;
             }
             #statusText {
-                font-size: 12px;
-                color: #7a82a0;
+                font-size: 14px;
+                font-weight: 600;
+                color: #1a1d23;
+            }
+            #statusDot {
+                font-size: 18px;
             }
             #inferenceLabel {
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 11px;
-                color: #7a82a0;
-                background: #141720;
-                border: 1px solid #2a2f45;
-                border-radius: 10px;
-                padding: 2px 10px;
+                font-family: "Consolas", monospace;
+                font-size: 13px;
+                font-weight: bold;
+                color: #52606d;
+                background: #f1f3f6;
+                border: 1px solid #cbd1d9;
+                border-radius: 6px;
+                padding: 5px 10px;
                 min-width: 70px;
             }
             #dbBtn {
-                background: transparent;
-                color: #7a82a0;
-                border: 1px solid #2a2f45;
-                border-radius: 12px;
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 11px;
+                background: #ffffff;
+                color: #1a1d23;
+                border: 2px solid #a8b0ba;
+                border-radius: 6px;
+                font-size: 14px;
                 font-weight: bold;
-                padding: 2px 12px;
+                padding: 6px 14px;
             }
             #dbBtn:hover {
-                background: #1c1f2e;
-                color: #e8eaf0;
-                border-color: #3a4060;
+                background: #e3f2fd;
+                border-color: #1565c0;
+                color: #0d47a1;
+            }
+            #dbBtn:pressed {
+                background: #bbdefb;
             }
 
             /* ── Frame panel ──────────────────────────────────────────── */
             #framePanel {
-                background: #141720;
-                border: 1px solid #2a2f45;
+                background: #ffffff;
+                border: 1px solid #cbd1d9;
                 border-radius: 8px;
-                margin: 8px 4px 8px 8px;
+                margin: 10px 6px 10px 10px;
             }
             #viewContainer {
-                background: #0d0f14;
+                background: #1a1d23;
                 border-radius: 6px;
             }
 
             /* ── LIVE badge ───────────────────────────────────────────── */
             #liveBadge {
-                background: rgba(26, 8, 8, 0.85);
-                color: #ff1744;
-                border: 1px solid #ff1744;
-                border-radius: 12px;
-                padding: 2px 10px;
+                background: #c62828;
+                color: #ffffff;
+                border: 2px solid #ffffff;
+                border-radius: 6px;
+                padding: 5px 12px;
                 font-family: "Consolas", monospace;
-                font-size: 10px;
+                font-size: 13px;
                 font-weight: bold;
                 letter-spacing: 2px;
             }
 
             /* ── Capture bar ──────────────────────────────────────────── */
             #captureBar {
-                background: #141720;
-                border-top: 1px solid #2a2f45;
+                background: #ffffff;
+                border-top: 1px solid #cbd1d9;
             }
 
             /* ── Mode toggle buttons ──────────────────────────────────── */
             QPushButton#modeActive {
-                background: #1c2a3a;
-                color: #60b4ff;
-                border: 1px solid #2a5a8c;
-                border-radius: 4px;
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 11px;
+                background: #1565c0;
+                color: #ffffff;
+                border: 2px solid #0d47a1;
+                border-radius: 6px;
+                font-size: 14px;
                 font-weight: bold;
-                padding: 2px 12px;
+                padding: 6px 16px;
             }
             QPushButton#modeInactive {
-                background: transparent;
-                color: #4a5070;
-                border: 1px solid #2a2f45;
-                border-radius: 4px;
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 11px;
-                padding: 2px 12px;
+                background: #ffffff;
+                color: #52606d;
+                border: 2px solid #cbd1d9;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: 600;
+                padding: 6px 16px;
             }
             QPushButton#modeInactive:hover {
-                background: #1c1f2e;
-                color: #7a82a0;
-                border-color: #3a4060;
+                background: #e3f2fd;
+                color: #1565c0;
+                border-color: #1565c0;
             }
 
             /* ── Upload button ────────────────────────────────────────── */
             #uploadBtn {
-                background: #1a3a2c;
-                color: #60ffb4;
-                border: 1px solid #2a8c5a;
-                border-radius: 4px;
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 14px;
+                background: #2e7d32;
+                color: #ffffff;
+                border: 2px solid #1b5e20;
+                border-radius: 8px;
+                font-size: 17px;
                 font-weight: bold;
                 letter-spacing: 1px;
-                padding: 10px;
+                padding: 12px;
             }
             #uploadBtn:hover:!disabled {
-                background: #1e4a38;
-                border-color: #3abc7a;
-                color: #90ffd0;
+                background: #388e3c;
+                border-color: #1b5e20;
+            }
+            #uploadBtn:pressed {
+                background: #1b5e20;
             }
             #uploadBtn:disabled {
-                opacity: 0.45;
-                color: #7a82a0;
-                border-color: #2a2f45;
-                background: #141720;
+                color: #a8b0ba;
+                border-color: #cbd1d9;
+                background: #eef0f3;
             }
 
             #captureBtn {
-                background: #1a3a5c;
-                color: #60b4ff;
-                border: 1px solid #2a5a8c;
-                border-radius: 4px;
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 14px;
+                background: #1565c0;
+                color: #ffffff;
+                border: 2px solid #0d47a1;
+                border-radius: 8px;
+                font-size: 17px;
                 font-weight: bold;
                 letter-spacing: 1px;
-                padding: 10px;
+                padding: 12px;
             }
             #captureBtn:hover:!disabled {
-                background: #1e4a72;
-                border-color: #3a7abc;
-                color: #90ccff;
+                background: #1976d2;
+                border-color: #0d47a1;
             }
             #captureBtn:pressed {
-                background: #152e48;
+                background: #0d47a1;
             }
             #captureBtn:disabled {
-                opacity: 0.45;
-                color: #7a82a0;
-                border-color: #2a2f45;
-                background: #141720;
+                color: #a8b0ba;
+                border-color: #cbd1d9;
+                background: #eef0f3;
             }
 
             /* ── Info panel ───────────────────────────────────────────── */
             #infoPanel {
-                background: #0d0f14;
-                margin: 8px 8px 8px 4px;
+                background: #eef0f3;
+                margin: 10px 10px 10px 6px;
             }
 
             /* ── Cards ────────────────────────────────────────────────── */
             #card {
-                background: #1c1f2e;
-                border: 1px solid #2a2f45;
+                background: #ffffff;
+                border: 1px solid #cbd1d9;
                 border-radius: 8px;
             }
             #cardTitle {
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 10px;
+                font-size: 12px;
                 font-weight: bold;
                 letter-spacing: 2px;
-                color: #7a82a0;
+                color: #52606d;
                 text-transform: uppercase;
             }
 
             /* ── Counters ─────────────────────────────────────────────── */
             #counterBox {
-                background: #141720;
-                border: 1px solid #2a2f45;
-                border-radius: 4px;
+                background: #f7f8fa;
+                border: 1px solid #cbd1d9;
+                border-radius: 6px;
             }
             #counterLabel {
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 9px;
+                font-size: 11px;
                 font-weight: bold;
                 letter-spacing: 2px;
-                color: #7a82a0;
+                color: #52606d;
             }
             #counterValue {
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 42px;
+                font-family: "Segoe UI", "Consolas", monospace;
+                font-size: 56px;
                 font-weight: bold;
                 line-height: 1;
             }
             #ngRate {
                 font-family: "Consolas", monospace;
+                font-size: 16px;
+                font-weight: bold;
+                color: #1a1d23;
+            }
+            #expectedLabel {
+                font-family: "Consolas", monospace;
+                font-size: 14px;
+                font-weight: bold;
+                color: #1a1d23;
+            }
+            #missingLabel {
                 font-size: 13px;
                 font-weight: bold;
+                padding: 4px;
             }
 
-            /* ── Reset button ─────────────────────────────────────────── */
-            #resetBtn {
-                background: transparent;
-                color: #7a82a0;
-                border: 1px solid #2a2f45;
-                border-radius: 4px;
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 12px;
+            /* ── Secondary / Reset buttons ────────────────────────────── */
+            #secondaryBtn {
+                background: #ffffff;
+                color: #1565c0;
+                border: 2px solid #1565c0;
+                border-radius: 6px;
+                font-size: 14px;
                 font-weight: bold;
-                letter-spacing: 1px;
-                padding: 7px;
+                letter-spacing: 0.5px;
+                padding: 10px;
+            }
+            #secondaryBtn:hover {
+                background: #e3f2fd;
+            }
+            #secondaryBtn:pressed {
+                background: #bbdefb;
+            }
+            #resetBtn {
+                background: #ffffff;
+                color: #52606d;
+                border: 2px solid #a8b0ba;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+                letter-spacing: 0.5px;
+                padding: 10px;
             }
             #resetBtn:hover {
-                background: #2a2f45;
-                color: #e8eaf0;
-                border-color: #3a4060;
+                background: #fff3e0;
+                color: #ef6c00;
+                border-color: #ef6c00;
+            }
+            #resetBtn:pressed {
+                background: #ffe0b2;
             }
 
             /* ── Verdict badges (last result) ─────────────────────────── */
             QLabel[objectName="verdictBadge_OK"] {
-                background: #00e67622;
-                color: #00e676;
-                border: 1px solid #00e676;
-                border-radius: 12px;
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 20px;
+                background: #2e7d32;
+                color: #ffffff;
+                border: 2px solid #1b5e20;
+                border-radius: 8px;
+                font-size: 22px;
                 font-weight: bold;
-                padding: 6px 0;
+                letter-spacing: 2px;
+                padding: 8px 0;
             }
             QLabel[objectName="verdictBadge_NG"] {
-                background: #ff174422;
-                color: #ff1744;
-                border: 1px solid #ff1744;
-                border-radius: 12px;
-                font-family: "JetBrains Mono", "Consolas", monospace;
-                font-size: 20px;
+                background: #c62828;
+                color: #ffffff;
+                border: 2px solid #8b1e1e;
+                border-radius: 8px;
+                font-size: 22px;
                 font-weight: bold;
-                padding: 6px 0;
+                letter-spacing: 2px;
+                padding: 8px 0;
             }
 
             /* ── Utility colours ─────────────────────────────────────── */
-            #dimText  { color: #4a5070; font-size: 11px; }
-            #okText   { color: #00e676; font-size: 12px; }
-            #ngText   { color: #ff1744; font-size: 12px; font-weight: bold; }
+            #dimText  { color: #7b8794; font-size: 13px; }
+            #okText   { color: #2e7d32; font-size: 14px; font-weight: bold; }
+            #ngText   { color: #c62828; font-size: 14px; font-weight: bold; }
 
             /* ── History list ─────────────────────────────────────────── */
             #historyList {
-                background: #0d0f14;
-                border: none;
+                background: #ffffff;
+                border: 1px solid #cbd1d9;
+                border-radius: 6px;
                 font-family: "Consolas", monospace;
-                font-size: 11px;
+                font-size: 12px;
             }
             #historyList::item {
-                padding: 4px 2px;
-                border-left: 2px solid transparent;
-            }
-            #historyList::item:selected {
-                background: #1c1f2e;
+                padding: 7px 4px;
+                border-bottom: 1px solid #eef0f3;
             }
 
             /* ── Splitter handle ─────────────────────────────────────── */
             QSplitter::handle {
-                background: #2a2f45;
-                width: 1px;
+                background: #cbd1d9;
+                width: 2px;
             }
 
-            /* ── Scrollbars ───────────────────────────────────────────── */
+            /* ── Scrollbars (bigger for touch) ─────────────────────────── */
             QScrollBar:vertical {
-                background: transparent;
-                width: 6px;
+                background: #eef0f3;
+                width: 14px;
                 margin: 0;
+                border-radius: 7px;
             }
             QScrollBar::handle:vertical {
-                background: #2a2f45;
-                border-radius: 3px;
-                min-height: 20px;
+                background: #a8b0ba;
+                border-radius: 7px;
+                min-height: 40px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #52606d;
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0;
+            }
+
+            /* ── Labels ───────────────────────────────────────────────── */
+            QLabel { color: #1a1d23; }
+
+            /* ── Dialogs (inherit bigger fonts) ──────────────────────── */
+            QDialog, QMessageBox, QInputDialog {
+                background: #ffffff;
+                color: #1a1d23;
+                font-size: 14px;
+            }
+            QDialog QPushButton, QMessageBox QPushButton, QInputDialog QPushButton {
+                min-height: 34px;
+                min-width: 90px;
+                padding: 6px 16px;
+                font-size: 14px;
+                font-weight: bold;
+                background: #1565c0;
+                color: #ffffff;
+                border: 2px solid #0d47a1;
+                border-radius: 6px;
+            }
+            QDialog QPushButton:hover, QMessageBox QPushButton:hover, QInputDialog QPushButton:hover {
+                background: #1976d2;
             }
         """)
