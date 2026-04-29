@@ -995,3 +995,84 @@
 2026-04-29 10:30:02 | INFO     | core.pipeline | CameraWorker: camera released.
 2026-04-29 10:30:02 | INFO     | core.database | Database connection closed.
 2026-04-29 10:30:02 | INFO     | ui.main_window | MainWindow: shutdown complete.
+2026-04-30 05:37:13 | INFO     | core.database | Database ready: C:\Users\thepr\pipe-inspector-pyside\data\pipe_inspector.db
+2026-04-30 05:37:13 | INFO     | core.database | Recalculated all batch counters after cleanup.
+2026-04-30 05:37:13 | INFO     | core.database | Recovered active batch: id=BATCH-FA9675 total=1 ng=0 expected=5
+2026-04-30 05:37:13 | INFO     | core.batch_state | Recovered batch BATCH-FA9675 (total=1, ng=0, seq=1)
+2026-04-30 05:37:13 | INFO     | ui.maintenance_widget | Maintenance: loaded persisted zone [(185, 124), (439, 129), (445, 282), (192, 273)]
+2026-04-30 05:37:13 | INFO     | ui.maintenance_widget | Maintenance: loaded reference from C:\Users\thepr\pipe-inspector-pyside\data\calibration_ref.npy
+2026-04-30 05:37:14 | INFO     | ui.main_window | CameraWorker started.
+2026-04-30 05:37:14 | INFO     | ui.main_window | RS485: disabled (RS485_MODE='off').
+2026-04-30 05:37:14 | INFO     | core.pipeline | CameraWorker: starting | camera=1 trigger=manual
+2026-04-30 05:37:15 | INFO     | __main__ | Pipe Inspector (PySide6) started.
+2026-04-30 05:37:15 | ERROR    | core.pipeline | Cannot open camera index 1. 
+2026-04-30 05:37:19 | INFO     | ui.camera_select_dialog | scan_cameras: found Camera 0 (640x480 @ 30fps)
+2026-04-30 05:37:22 | INFO     | ui.main_window | Switching camera: 1 → 0
+2026-04-30 05:37:22 | INFO     | core.pipeline | CameraWorker: stop requested.
+2026-04-30 05:37:22 | INFO     | ui.main_window | Camera switched to 0 (persisted)
+2026-04-30 05:37:22 | INFO     | core.pipeline | CameraWorker: starting | camera=0 trigger=manual
+2026-04-30 05:37:23 | INFO     | core.pipeline | CameraWorker: 640×480 @ 30fps
+2026-04-30 05:37:23 | INFO     | core.pipeline | CameraWorker: warming up (10 frames)...
+2026-04-30 05:37:25 | INFO     | core.pipeline | CameraWorker: warmup done.
+2026-04-30 05:37:25 | INFO     | core.pipeline | CameraWorker: frame reader + emitter threads started.
+2026-04-30 05:37:33 | INFO     | ui.maintenance_widget | Maintenance: zone cleared.
+2026-04-30 05:37:38 | INFO     | ui.main_window | MainWindow: closing — stopping worker...
+2026-04-30 05:37:38 | INFO     | core.pipeline | CameraWorker: stop requested.
+2026-04-30 05:37:38 | INFO     | core.pipeline | CameraWorker: camera released.
+2026-04-30 05:37:38 | INFO     | core.database | Database connection closed.
+2026-04-30 05:37:38 | INFO     | ui.main_window | MainWindow: shutdown complete.
+2026-04-30 05:37:48 | INFO     | core.database | Database ready: C:\Users\thepr\pipe-inspector-pyside\data\pipe_inspector.db
+2026-04-30 05:37:48 | INFO     | core.database | Recalculated all batch counters after cleanup.
+2026-04-30 05:37:48 | INFO     | core.database | Recovered active batch: id=BATCH-FA9675 total=1 ng=0 expected=5
+2026-04-30 05:37:48 | INFO     | core.batch_state | Recovered batch BATCH-FA9675 (total=1, ng=0, seq=1)
+2026-04-30 05:37:49 | INFO     | ui.main_window | CameraWorker started.
+2026-04-30 05:37:49 | INFO     | ui.main_window | RS485: disabled (RS485_MODE='off').
+2026-04-30 05:37:49 | INFO     | core.pipeline | CameraWorker: starting | camera=0 trigger=manual
+2026-04-30 05:37:49 | INFO     | __main__ | Pipe Inspector (PySide6) started.
+2026-04-30 05:37:50 | INFO     | core.pipeline | CameraWorker: 640×480 @ 30fps
+2026-04-30 05:37:50 | INFO     | core.pipeline | CameraWorker: warming up (10 frames)...
+2026-04-30 05:37:52 | INFO     | core.pipeline | CameraWorker: warmup done.
+2026-04-30 05:37:52 | INFO     | core.pipeline | CameraWorker: frame reader + emitter threads started.
+2026-04-30 05:37:54 | INFO     | core.pipeline | CameraWorker: manual trigger.
+2026-04-30 05:37:54 | INFO     | core.pipeline | CameraWorker: frame captured 640×480
+2026-04-30 05:37:54 | WARNING  | core.pipeline | PipeInspector: pipe circle not detected.
+2026-04-30 05:37:54 | INFO     | core.pipeline | CameraWorker: inference done in 27.7 ms
+2026-04-30 05:37:54 | INFO     | core.database | Recalculated all batch counters after cleanup.
+2026-04-30 05:37:54 | INFO     | core.pipeline | CameraWorker: submitted | verdict=NG | detections=1
+2026-04-30 05:38:00 | INFO     | ui.main_window | Mode: Upload Image
+2026-04-30 05:38:01 | INFO     | ui.main_window | Mode: Camera
+2026-04-30 05:38:09 | INFO     | ui.main_window | MainWindow: closing — stopping worker...
+2026-04-30 05:38:09 | INFO     | core.pipeline | CameraWorker: stop requested.
+2026-04-30 05:38:09 | INFO     | core.pipeline | CameraWorker: camera released.
+2026-04-30 05:38:09 | INFO     | core.database | Database connection closed.
+2026-04-30 05:38:09 | INFO     | ui.main_window | MainWindow: shutdown complete.
+05:38:18 | INFO     | smartsense.dio | MockRS485DIO: manual mode — control via set_input()
+05:38:18 | INFO     | app.rs485_worker | RS485OutputWriter: ok_bit=0 ng_bit=1 pulse=200ms
+05:38:18 | INFO     | app.rs485_worker | RS485InputWorker: started | bits=[0] | poll=20ms | debounce=30ms
+05:38:22 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+05:38:22 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+05:38:22 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+05:38:22 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+05:38:22 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+05:38:22 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+05:38:29 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+05:38:29 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+05:38:29 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+05:38:30 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+05:38:30 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+05:38:30 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+05:39:23 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+05:39:23 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+05:39:23 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+05:39:24 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+05:39:24 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+05:39:24 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+05:39:29 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+05:39:29 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+05:39:29 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+05:39:30 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+05:39:30 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+05:39:30 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+05:39:48 | INFO     | app.test_panel | Test panel closing — stopping worker
+05:39:48 | INFO     | app.rs485_worker | RS485InputWorker: stop requested
+05:39:48 | INFO     | app.rs485_worker | RS485InputWorker: stopped
