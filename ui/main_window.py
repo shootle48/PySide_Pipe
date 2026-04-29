@@ -387,18 +387,18 @@ class MainWindow(QMainWindow):
         nums_row.addWidget(self._counter_ng[0])
         c_layout.addLayout(nums_row)
 
-        # NG Rate row
+        # OEE Quality Rate row — % ของ Good ต่อ Total (ตามที่ factory ใช้)
         rate_row = QHBoxLayout()
-        rate_row.addWidget(QLabel("NG Rate"))
+        rate_row.addWidget(QLabel("Quality Rate"))
         self._ng_rate_label = QLabel("—")
         self._ng_rate_label.setObjectName("ngRate")
         self._ng_rate_label.setAlignment(Qt.AlignRight)
         rate_row.addWidget(self._ng_rate_label, stretch=1)
         c_layout.addLayout(rate_row)
 
-        # Expected vs Actual row
+        # Target vs Actual row
         exp_row = QHBoxLayout()
-        exp_row.addWidget(QLabel("Expected"))
+        exp_row.addWidget(QLabel("Target"))
         self._expected_label = QLabel("—")
         self._expected_label.setAlignment(Qt.AlignRight)
         self._expected_label.setObjectName("expectedLabel")
@@ -421,8 +421,8 @@ class MainWindow(QMainWindow):
         self._missing_label.setObjectName("missingLabel")
         c_layout.addWidget(self._missing_label)
 
-        # Set / Edit expected button
-        self._expected_btn = QPushButton("Set Expected")
+        # Set / Edit target button
+        self._expected_btn = QPushButton("Set Target")
         self._expected_btn.setObjectName("secondaryBtn")
         self._expected_btn.clicked.connect(self._set_expected)
         c_layout.addWidget(self._expected_btn)
@@ -650,7 +650,7 @@ class MainWindow(QMainWindow):
         )
 
     def _update_counters(self, batch: dict) -> None:
-        """Refresh TOTAL / NG / NG Rate / Expected from a batch snapshot dict."""
+        """Refresh TOTAL / NG / Quality Rate / Target from a batch snapshot dict."""
         total    = batch.get("total", 0)
         ng       = batch.get("ng", 0)
         expected = batch.get("expected_total", 0)
@@ -658,9 +658,11 @@ class MainWindow(QMainWindow):
         self._counter_total[1].setText(str(total))
         self._counter_ng[1].setText(str(ng))
 
+        # OEE Quality Rate = Good / Total × 100   (ตามนิยาม OEE มาตรฐาน)
+        # ถ้า NG = 0 → 100%   ถ้า NG = total → 0%
         if total > 0:
-            rate = ng / total * 100
-            self._ng_rate_label.setText(f"{rate:.1f} %")
+            quality_rate = (total - ng) / total * 100
+            self._ng_rate_label.setText(f"{quality_rate:.1f} %")
         else:
             self._ng_rate_label.setText("—")
 
@@ -955,11 +957,11 @@ class MainWindow(QMainWindow):
         self._frame_widget.show_placeholder("Batch reset — กดปุ่ม Capture เพื่อเริ่มใหม่")
 
     def _set_expected(self) -> None:
-        """เปลี่ยน expected_total ของ batch ปัจจุบันโดยไม่ reset."""
+        """เปลี่ยน target ของ batch ปัจจุบันโดยไม่ reset."""
         current = self._batch_state.get_state().get("expected_total", 0)
         expected, ok = QInputDialog.getInt(
-            self, "Set Expected",
-            "จำนวนชิ้นที่คาดหวังใน batch นี้\n(0 = ไม่ระบุ)",
+            self, "Set Target",
+            "จำนวนชิ้นที่ตั้งเป้าใน batch นี้\n(0 = ไม่ระบุ)",
             current, 0, 1_000_000,
         )
         if not ok:

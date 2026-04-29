@@ -221,7 +221,7 @@ class DbViewerDialog(QDialog):
         self._stat_total.setObjectName("statLabel")
         self._stat_ng    = QLabel("NG: —")
         self._stat_ng.setObjectName("statLabel")
-        self._stat_rate  = QLabel("NG Rate: —")
+        self._stat_rate  = QLabel("Quality Rate: —")
         self._stat_rate.setObjectName("statLabel")
 
         bottom.addWidget(self._stat_total)
@@ -339,8 +339,9 @@ class DbViewerDialog(QDialog):
         # Update stats bar
         self._stat_total.setText(f"Total: {total}")
         self._stat_ng.setText(f"NG: {ng}")
-        rate = f"{ng/total*100:.1f}%" if total > 0 else "—"
-        self._stat_rate.setText(f"NG Rate: {rate}")
+        # OEE Quality Rate = Good / Total × 100
+        rate = f"{(total-ng)/total*100:.1f}%" if total > 0 else "—"
+        self._stat_rate.setText(f"Quality Rate: {rate}")
 
     def _set_cell(self, row: int, col: int, text: str) -> None:
         item = QTableWidgetItem(text)
@@ -349,11 +350,11 @@ class DbViewerDialog(QDialog):
 
     def _update_stats_bar(self, total: int, ng: int) -> None:
         """อัพเดต stats bar ด้านล่างตาราง และ batch list item ซ้าย."""
-        # Stats bar
+        # Stats bar — OEE Quality Rate = Good / Total × 100
         self._stat_total.setText(f"Total: {total}")
         self._stat_ng.setText(f"NG: {ng}")
-        rate = f"{ng/total*100:.1f}%" if total > 0 else "—"
-        self._stat_rate.setText(f"NG Rate: {rate}")
+        rate = f"{(total-ng)/total*100:.1f}%" if total > 0 else "—"
+        self._stat_rate.setText(f"Quality Rate: {rate}")
 
         # Batch list item (อัพ text ตรงๆ ไม่ reload ทั้งหมด)
         for i in range(self._batch_list.count()):
@@ -582,7 +583,7 @@ class DbViewerDialog(QDialog):
         self._row_images.clear()
         self._stat_total.setText("Total: 0")
         self._stat_ng.setText("NG: 0")
-        self._stat_rate.setText("NG Rate: —")
+        self._stat_rate.setText("Quality Rate: —")
         self._preview_label.setPixmap(QPixmap())
         self._preview_label.setText("— เลือก row ที่เป็น NG เพื่อดูภาพ —")
         self._current_pixmap = None

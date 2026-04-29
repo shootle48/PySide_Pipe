@@ -30,3 +30,968 @@
 2026-04-22 17:28:09 | INFO     | pipeline | CameraWorker: camera released.
 2026-04-22 17:28:09 | INFO     | database | Database connection closed.
 2026-04-22 17:28:09 | INFO     | ui.main_window | MainWindow: shutdown complete.
+2026-04-24 17:16:10 | INFO     | core.database | Database ready: C:\Users\thepr\pipe-inspector-pyside\data\pipe_inspector.db
+2026-04-24 17:16:10 | INFO     | core.database | Recalculated all batch counters after cleanup.
+2026-04-24 17:16:10 | INFO     | core.database | Recovered active batch: id=BATCH-6F69C4 total=4 ng=2 expected=5
+2026-04-24 17:16:10 | INFO     | core.batch_state | Recovered batch BATCH-6F69C4 (total=4, ng=2, seq=6)
+2026-04-24 17:16:11 | INFO     | ui.maintenance_widget | Maintenance: loaded persisted zone [(185, 124), (439, 129), (445, 282), (192, 273)]
+2026-04-24 17:16:11 | INFO     | ui.maintenance_widget | Maintenance: loaded reference from C:\Users\thepr\pipe-inspector-pyside\data\calibration_ref.npy
+2026-04-24 17:16:12 | INFO     | ui.main_window | CameraWorker started.
+2026-04-24 17:16:12 | INFO     | ui.main_window | RS485: disabled (RS485_MODE='off').
+2026-04-24 17:16:12 | INFO     | core.pipeline | CameraWorker: starting | camera=0 trigger=manual
+2026-04-24 17:16:13 | INFO     | __main__ | Pipe Inspector (PySide6) started.
+2026-04-24 17:16:14 | INFO     | core.pipeline | CameraWorker: 640×480 @ 30fps
+2026-04-24 17:16:14 | INFO     | core.pipeline | CameraWorker: warming up (10 frames)...
+2026-04-24 17:16:15 | INFO     | core.pipeline | CameraWorker: warmup done.
+2026-04-24 17:16:15 | INFO     | core.pipeline | CameraWorker: frame reader + emitter threads started.
+2026-04-24 17:16:28 | INFO     | core.database | Recovered active batch: id=BATCH-6F69C4 total=4 ng=2 expected=5
+2026-04-24 17:16:39 | INFO     | ui.main_window | MainWindow: closing — stopping worker...
+2026-04-24 17:16:39 | INFO     | core.pipeline | CameraWorker: stop requested.
+2026-04-24 17:16:39 | INFO     | core.pipeline | CameraWorker: camera released.
+2026-04-24 17:16:39 | INFO     | core.database | Database connection closed.
+2026-04-24 17:16:39 | INFO     | ui.main_window | MainWindow: shutdown complete.
+2026-04-28 20:35:04 | INFO     | core.database | Database ready: C:\Users\thepr\pipe-inspector-pyside\data\pipe_inspector.db
+2026-04-28 20:35:04 | INFO     | core.database | Recalculated all batch counters after cleanup.
+2026-04-28 20:35:04 | INFO     | core.database | Recovered active batch: id=BATCH-6F69C4 total=4 ng=2 expected=5
+2026-04-28 20:35:04 | INFO     | core.batch_state | Recovered batch BATCH-6F69C4 (total=4, ng=2, seq=6)
+2026-04-28 20:35:04 | INFO     | ui.maintenance_widget | Maintenance: loaded persisted zone [(185, 124), (439, 129), (445, 282), (192, 273)]
+2026-04-28 20:35:04 | INFO     | ui.maintenance_widget | Maintenance: loaded reference from C:\Users\thepr\pipe-inspector-pyside\data\calibration_ref.npy
+2026-04-28 20:35:05 | INFO     | ui.main_window | CameraWorker started.
+2026-04-28 20:35:05 | INFO     | ui.main_window | RS485: disabled (RS485_MODE='off').
+2026-04-28 20:35:05 | INFO     | core.pipeline | CameraWorker: starting | camera=0 trigger=manual
+2026-04-28 20:35:06 | INFO     | __main__ | Pipe Inspector (PySide6) started.
+2026-04-28 20:35:08 | INFO     | core.pipeline | CameraWorker: 640×480 @ 30fps
+2026-04-28 20:35:08 | INFO     | core.pipeline | CameraWorker: warming up (10 frames)...
+2026-04-28 20:35:08 | INFO     | core.pipeline | CameraWorker: warmup done.
+2026-04-28 20:35:08 | INFO     | core.pipeline | CameraWorker: frame reader + emitter threads started.
+2026-04-28 20:35:39 | INFO     | core.database | Recovered active batch: id=BATCH-6F69C4 total=4 ng=2 expected=5
+2026-04-28 20:35:46 | INFO     | core.database | Batch closed: BATCH-6F69C4
+2026-04-28 20:35:46 | INFO     | core.database | New batch created: BATCH-FA9675 (expected=5)
+2026-04-28 20:35:46 | INFO     | core.batch_state | Batch reset: BATCH-6F69C4 → BATCH-FA9675 (expected=5)
+2026-04-28 20:35:48 | INFO     | ui.main_window | Mode: Upload Image
+2026-04-28 20:35:55 | INFO     | ui.main_window | Mode: Camera
+2026-04-28 20:35:57 | INFO     | ui.main_window | MainWindow: closing — stopping worker...
+2026-04-28 20:35:57 | INFO     | core.pipeline | CameraWorker: stop requested.
+2026-04-28 20:35:57 | INFO     | core.pipeline | CameraWorker: camera released.
+2026-04-28 20:35:57 | INFO     | core.database | Database connection closed.
+2026-04-28 20:35:57 | INFO     | ui.main_window | MainWindow: shutdown complete.
+20:41:01 | INFO     | smartsense.dio | MockRS485DIO: manual mode — control via set_input()
+20:41:01 | INFO     | app.rs485_worker | RS485OutputWriter: ok_bit=0 ng_bit=1 pulse=200ms
+20:41:02 | INFO     | app.rs485_worker | RS485InputWorker: started | bits=[0] | poll=20ms | debounce=30ms
+20:49:10 | INFO     | app.test_panel | Test panel closing — stopping worker
+20:49:10 | INFO     | app.rs485_worker | RS485InputWorker: stop requested
+20:49:10 | INFO     | app.rs485_worker | RS485InputWorker: stopped
+20:50:18 | INFO     | smartsense.dio | MockRS485DIO: manual mode — control via set_input()
+20:50:18 | INFO     | app.rs485_worker | RS485OutputWriter: ok_bit=0 ng_bit=1 pulse=200ms
+20:50:19 | INFO     | app.rs485_worker | RS485InputWorker: started | bits=[0] | poll=20ms | debounce=30ms
+20:50:20 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+20:50:20 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+20:50:21 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+20:50:21 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+20:50:21 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+20:50:21 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+21:16:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+21:16:06 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+21:16:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+21:16:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+21:16:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+21:16:07 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+21:16:15 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+21:16:15 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+21:16:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+21:16:16 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+21:16:16 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+21:16:16 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+21:16:23 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+21:16:23 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+21:16:23 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+21:16:23 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+21:16:23 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+21:16:23 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+21:16:24 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+21:16:24 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+21:16:24 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+21:16:24 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+21:16:24 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+21:16:24 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+21:16:24 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+21:16:24 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+21:16:24 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+21:16:25 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+21:16:25 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+21:16:25 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+21:16:25 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+21:16:25 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+21:16:25 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+21:16:26 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+21:16:26 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+21:16:26 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+21:16:26 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+21:16:26 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+21:16:26 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+21:16:26 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+21:16:27 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+21:16:27 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+21:16:27 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+21:16:27 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+21:16:27 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+21:16:27 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+21:16:27 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+21:16:27 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+21:16:28 | INFO     | app.test_panel | Test panel closing — stopping worker
+21:16:28 | INFO     | app.rs485_worker | RS485InputWorker: stop requested
+21:16:28 | INFO     | app.rs485_worker | RS485InputWorker: stopped
+23:38:30 | INFO     | smartsense.dio | MockRS485DIO: manual mode — control via set_input()
+23:38:30 | INFO     | app.rs485_worker | RS485OutputWriter: ok_bit=0 ng_bit=1 pulse=200ms
+23:38:31 | INFO     | app.rs485_worker | RS485InputWorker: started | bits=[0] | poll=20ms | debounce=30ms
+23:38:34 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:34 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:34 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:35 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:35 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:35 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:52 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:52 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:52 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:53 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:53 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:53 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:53 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:53 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:53 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:54 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:54 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:54 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:54 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:54 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:54 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:55 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:55 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:55 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:55 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:55 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:55 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:55 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:55 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:55 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:55 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:55 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:55 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:55 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:55 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:55 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:55 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:55 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:55 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:55 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:55 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:55 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:55 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:55 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:56 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:56 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:56 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:56 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:56 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:56 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:56 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:56 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:56 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:56 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:56 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:56 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:56 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:56 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:56 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:56 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:56 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:56 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:56 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:56 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:56 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:56 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:56 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:57 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:57 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:57 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:57 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:57 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:57 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:57 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:57 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:57 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:57 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:57 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:57 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:57 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:57 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:57 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:57 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:57 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:57 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:57 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:57 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:57 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:57 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:57 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:57 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:57 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:57 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:57 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:57 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:57 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:57 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:57 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:57 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:57 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:57 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:57 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:57 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:58 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:58 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:58 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:58 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:58 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:58 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:58 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:58 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:58 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:58 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:58 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:58 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:58 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:58 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:58 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:58 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:58 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:58 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:58 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:58 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:58 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:58 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:58 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:58 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:58 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:58 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:58 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:58 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:58 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:58 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:58 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:58 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:58 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:58 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:58 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:58 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:59 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:59 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:59 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:59 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:59 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:59 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:59 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:59 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:59 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:59 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:59 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:59 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:59 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:59 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:59 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:59 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:59 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:59 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:59 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:38:59 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:59 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:59 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:59 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:59 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:59 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:59 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:59 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:59 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:38:59 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:38:59 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:38:59 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:38:59 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:38:59 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:38:59 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:38:59 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:38:59 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:00 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:00 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:00 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:00 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:00 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:00 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:00 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:00 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:00 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:00 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:00 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:00 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:00 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:00 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:00 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:00 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:00 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:00 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:00 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:00 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:00 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:00 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:00 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:00 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:00 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:00 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:00 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:00 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:00 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:00 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:00 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:00 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:00 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:00 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:00 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:00 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:01 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:01 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:01 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:01 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:01 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:01 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:01 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:01 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:01 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:01 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:01 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:01 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:01 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:01 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:01 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:01 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:01 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:01 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:01 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:01 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:01 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:01 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:01 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:01 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:01 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:01 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:01 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:01 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:01 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:01 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:01 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:01 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:01 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:01 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:01 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:02 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:02 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:02 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:02 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:02 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:02 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:02 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:02 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:02 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:02 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:02 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:02 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:02 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:02 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:02 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:02 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:02 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:02 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:02 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:02 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:02 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:02 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:02 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:02 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:02 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:03 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:03 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:03 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:03 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:03 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:03 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:03 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:03 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:03 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:03 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:03 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:03 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:03 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:03 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:03 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:03 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:03 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:03 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:03 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:03 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:03 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:03 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:03 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:03 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:03 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:03 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:03 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:03 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:03 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:03 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:03 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:03 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:03 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:03 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:03 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:04 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:04 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:04 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:04 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:04 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:04 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:04 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:04 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:04 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:04 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:04 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:04 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:04 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:04 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:04 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:04 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:04 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:04 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:04 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:04 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:04 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:04 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:04 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:04 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:04 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:04 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:04 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:04 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:04 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:04 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:04 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:04 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:04 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:04 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:04 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:04 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:05 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:05 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:05 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:05 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:05 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:05 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:05 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:05 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:05 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:05 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:05 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:05 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:05 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:05 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:05 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:05 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:05 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:05 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:05 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:05 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:05 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:05 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:05 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:05 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:05 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:05 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:05 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:05 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:05 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:05 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:05 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:05 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:05 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:05 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:05 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:05 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:06 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:06 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:06 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:06 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:06 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:06 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:06 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:06 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:06 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:06 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:06 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:06 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:06 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:06 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:06 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:06 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:06 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:06 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:06 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:06 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:06 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:06 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:06 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:07 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:07 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:07 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:07 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:07 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:07 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:07 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:07 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:07 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:07 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:07 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:07 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:07 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:07 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:07 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:07 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:07 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:07 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:07 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:07 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:07 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:07 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:07 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:07 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:07 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:08 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:08 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:08 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:08 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:08 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:08 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:08 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:08 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:08 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:08 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:08 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:08 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:08 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:08 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:08 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:08 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:08 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:08 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:08 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:08 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:08 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:08 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:08 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:08 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:08 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:08 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:08 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:08 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:08 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:08 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:08 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:08 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:08 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:09 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:09 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:09 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:09 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:09 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:09 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:09 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:09 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:09 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:09 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:09 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:09 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:09 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:09 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:09 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:09 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:09 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:09 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:09 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:09 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:09 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:09 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:09 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:09 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:09 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:09 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:10 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:10 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:10 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:10 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:10 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:10 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:10 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:10 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:10 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:10 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:10 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:10 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:10 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:10 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:10 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:10 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:10 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:10 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:10 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:10 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:10 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:10 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:10 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:10 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:10 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:10 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:11 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:11 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:11 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:11 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:11 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:11 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:11 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:11 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:11 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:11 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:11 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:11 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:11 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:11 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:11 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:11 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:11 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:11 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:11 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:11 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:11 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:11 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:11 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:11 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:11 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:11 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:11 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:11 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:12 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:12 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:12 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:12 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:12 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:12 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:12 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:12 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:12 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:12 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:12 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:12 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:12 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:12 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:12 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:12 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:12 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:12 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:12 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:12 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:12 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:12 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:12 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:12 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:12 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:12 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:12 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:12 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:12 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:12 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:12 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:12 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:13 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:13 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:13 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:13 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:13 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:13 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:13 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:13 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:13 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:13 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:13 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:13 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:13 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:13 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:13 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:13 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:13 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:13 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:13 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:13 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:13 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:13 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:13 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:13 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:13 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:13 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:13 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:13 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:13 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:13 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:13 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:13 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:13 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:13 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:14 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:14 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:14 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:14 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:14 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:14 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:14 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:14 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:14 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:14 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:14 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:14 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:14 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:14 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:14 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:14 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:14 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:14 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:14 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:14 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:14 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:14 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:14 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:14 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:14 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:14 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:14 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:14 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:14 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:14 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:14 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:14 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:14 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:15 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:15 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:15 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:15 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:15 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:15 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:15 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:15 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:15 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:15 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:15 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:15 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:15 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:15 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:15 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:15 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:15 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:15 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:15 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:15 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:15 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:15 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:15 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:15 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:15 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:15 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:15 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:15 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:15 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:15 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:15 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:15 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:15 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:15 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:15 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:16 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:16 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:16 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:16 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:16 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:16 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:16 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:16 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:16 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:16 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:16 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:16 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:16 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:16 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:16 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:16 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:16 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:16 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:16 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:16 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:16 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 HIGH (manual trigger)
+23:39:16 | INFO     | app.rs485_worker | RS485InputWorker: rising edge on bit 0
+23:39:17 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:17 | DEBUG    | smartsense.dio | MockRS485DIO: bit 0 LOW
+23:39:17 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:17 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:17 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:17 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:17 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:17 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=1)
+23:39:17 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:17 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:17 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=1)
+23:39:17 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=0, value=0)
+23:39:17 | INFO     | app.rs485_worker | verdict OK sent to PLC (bit 0)
+23:39:17 | INFO     | smartsense.dio | MockRS485DIO: write_output(bit=1, value=0)
+23:39:17 | INFO     | app.rs485_worker | verdict NG sent to PLC (bit 1)
+23:39:18 | INFO     | app.test_panel | Test panel closing — stopping worker
+23:39:18 | INFO     | app.rs485_worker | RS485InputWorker: stop requested
+23:39:18 | INFO     | app.rs485_worker | RS485InputWorker: stopped
+2026-04-29 10:01:17 | INFO     | core.database | Database ready: C:\Users\thepr\pipe-inspector-pyside\data\pipe_inspector.db
+2026-04-29 10:01:17 | INFO     | core.database | Recalculated all batch counters after cleanup.
+2026-04-29 10:01:17 | INFO     | core.database | Recovered active batch: id=BATCH-FA9675 total=0 ng=0 expected=5
+2026-04-29 10:01:17 | INFO     | core.batch_state | Recovered batch BATCH-FA9675 (total=0, ng=0, seq=0)
+2026-04-29 10:01:17 | INFO     | ui.maintenance_widget | Maintenance: loaded persisted zone [(185, 124), (439, 129), (445, 282), (192, 273)]
+2026-04-29 10:01:17 | INFO     | ui.maintenance_widget | Maintenance: loaded reference from C:\Users\thepr\pipe-inspector-pyside\data\calibration_ref.npy
+2026-04-29 10:01:19 | INFO     | ui.main_window | CameraWorker started.
+2026-04-29 10:01:19 | INFO     | ui.main_window | RS485: disabled (RS485_MODE='off').
+2026-04-29 10:01:19 | INFO     | core.pipeline | CameraWorker: starting | camera=0 trigger=manual
+2026-04-29 10:01:22 | INFO     | __main__ | Pipe Inspector (PySide6) started.
+2026-04-29 10:01:25 | INFO     | core.pipeline | CameraWorker: 640×480 @ 30fps
+2026-04-29 10:01:25 | INFO     | core.pipeline | CameraWorker: warming up (10 frames)...
+2026-04-29 10:01:26 | INFO     | core.pipeline | CameraWorker: warmup done.
+2026-04-29 10:01:26 | INFO     | core.pipeline | CameraWorker: frame reader + emitter threads started.
+2026-04-29 10:01:28 | INFO     | ui.camera_select_dialog | scan_cameras: found Camera 1 (640x480 @ 30fps)
+2026-04-29 10:01:31 | INFO     | ui.main_window | Switching camera: 0 → 1
+2026-04-29 10:01:31 | INFO     | core.pipeline | CameraWorker: stop requested.
+2026-04-29 10:01:31 | INFO     | core.pipeline | CameraWorker: camera released.
+2026-04-29 10:01:31 | INFO     | ui.main_window | Camera switched to 1 (persisted)
+2026-04-29 10:01:31 | INFO     | core.pipeline | CameraWorker: starting | camera=1 trigger=manual
+2026-04-29 10:01:33 | INFO     | core.pipeline | CameraWorker: 640×480 @ 30fps
+2026-04-29 10:01:33 | INFO     | core.pipeline | CameraWorker: warming up (10 frames)...
+2026-04-29 10:01:35 | INFO     | core.pipeline | CameraWorker: warmup done.
+2026-04-29 10:01:35 | INFO     | core.pipeline | CameraWorker: frame reader + emitter threads started.
+2026-04-29 10:06:41 | INFO     | core.database | Recovered active batch: id=BATCH-FA9675 total=0 ng=0 expected=5
+2026-04-29 10:10:40 | INFO     | core.database | Recovered active batch: id=BATCH-FA9675 total=0 ng=0 expected=5
+2026-04-29 10:10:47 | INFO     | core.database | Recovered active batch: id=BATCH-FA9675 total=0 ng=0 expected=5
+2026-04-29 10:20:36 | INFO     | ui.main_window | Mode: Camera
+2026-04-29 10:20:36 | INFO     | ui.main_window | Mode: Camera
+2026-04-29 10:23:59 | INFO     | core.database | Database ready: C:\Users\thepr\pipe-inspector-pyside\data\pipe_inspector.db
+2026-04-29 10:23:59 | INFO     | core.database | Recalculated all batch counters after cleanup.
+2026-04-29 10:23:59 | INFO     | core.database | Recovered active batch: id=BATCH-FA9675 total=0 ng=0 expected=5
+2026-04-29 10:23:59 | INFO     | core.batch_state | Recovered batch BATCH-FA9675 (total=0, ng=0, seq=0)
+2026-04-29 10:23:59 | INFO     | ui.maintenance_widget | Maintenance: loaded persisted zone [(185, 124), (439, 129), (445, 282), (192, 273)]
+2026-04-29 10:23:59 | INFO     | ui.maintenance_widget | Maintenance: loaded reference from C:\Users\thepr\pipe-inspector-pyside\data\calibration_ref.npy
+2026-04-29 10:24:00 | INFO     | ui.main_window | CameraWorker started.
+2026-04-29 10:24:00 | INFO     | ui.main_window | RS485: disabled (RS485_MODE='off').
+2026-04-29 10:24:00 | INFO     | core.pipeline | CameraWorker: starting | camera=1 trigger=manual
+2026-04-29 10:24:00 | INFO     | __main__ | Pipe Inspector (PySide6) started.
+2026-04-29 10:24:02 | INFO     | core.pipeline | CameraWorker: 640×480 @ 30fps
+2026-04-29 10:24:02 | INFO     | core.pipeline | CameraWorker: warming up (10 frames)...
+2026-04-29 10:24:03 | INFO     | core.pipeline | CameraWorker: warmup done.
+2026-04-29 10:24:03 | INFO     | core.pipeline | CameraWorker: frame reader + emitter threads started.
+2026-04-29 10:24:09 | INFO     | core.pipeline | CameraWorker: manual trigger.
+2026-04-29 10:24:10 | INFO     | core.pipeline | CameraWorker: frame captured 640×480
+2026-04-29 10:24:10 | INFO     | core.pipeline | PipeInspector: OK | defects=0 | pipe=(200,266) r=81
+2026-04-29 10:24:10 | INFO     | core.pipeline | CameraWorker: inference done in 59.1 ms
+2026-04-29 10:24:10 | INFO     | core.database | Recalculated all batch counters after cleanup.
+2026-04-29 10:24:10 | INFO     | core.pipeline | CameraWorker: submitted | verdict=OK | detections=0
+2026-04-29 10:25:06 | WARNING  | core.pipeline | CameraWorker: camera offline 🔴 (after 30 consecutive failed reads)
+2026-04-29 10:25:06 | WARNING  | ui.main_window | UI: camera offline
+2026-04-29 10:30:02 | INFO     | ui.main_window | MainWindow: closing — stopping worker...
+2026-04-29 10:30:02 | INFO     | core.pipeline | CameraWorker: stop requested.
+2026-04-29 10:30:02 | INFO     | core.pipeline | CameraWorker: camera released.
+2026-04-29 10:30:02 | INFO     | core.database | Database connection closed.
+2026-04-29 10:30:02 | INFO     | ui.main_window | MainWindow: shutdown complete.

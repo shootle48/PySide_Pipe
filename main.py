@@ -25,44 +25,69 @@ from PySide6.QtWidgets import QApplication
 from ui.main_window import MainWindow
 
 
-# ── Logging setup (console + rotating file) ───────────────────────────────
+# ── Logging setup (console + rotating file × 2) ───────────────────────────
 def _setup_logging() -> None:
     """
-    Configure root logger:
-      - Console handler (เหมือนเดิม — สำหรับ dev)
-      - Rotating file handler: logs/app.log, 5MB × 5 ไฟล์ (เก็บสูงสุด ~25MB)
+    Configure root logger + แยก log ออกเป็น 2 ไฟล์ตามฝั่ง:
+
+      logs/app.log         — ทุกอย่าง (รวมทั้งสองฝั่ง)
+      logs/smartsense.log  — เฉพาะฝั่ง Smart-Sense library / hardware
+                              (logger name ขึ้นต้นด้วย "smartsense.")
+
+    เวลามีปัญหาที่หน้างาน:
+      - ปัญหา detection / UI / state         → ดู app.log
+      - ปัญหา trigger ไม่เข้า / sorter ไม่ทำงาน → ดู smartsense.log
+        (ถ้า smartsense.log มี ERROR → ปัญหาอยู่ฝั่ง hardware/library พี่ Smart-Sense)
+        (ถ้า smartsense.log clean แต่ app.log ERROR → ปัญหาฝั่งโค้ดผม)
     """
     log_dir = Path(__file__).parent / "logs"
     log_dir.mkdir(exist_ok=True)
 
-    fmt = logging.Formatter(
+    full_fmt = logging.Formatter(
         "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-
-    # Console handler — ใช้ format เดิม (เวลาสั้น) เพื่อให้อ่าน terminal ง่าย
-    console = logging.StreamHandler(sys.stderr)
-    console.setFormatter(logging.Formatter(
+    short_fmt = logging.Formatter(
         "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
         datefmt="%H:%M:%S",
-    ))
+    )
 
-    # Rotating file handler — format เต็ม (มีวันที่) สำหรับ debug ย้อนหลัง
-    file_handler = RotatingFileHandler(
+    # ── Console handler (เหมือนเดิม — รับทุก log) ────────────────────────
+    console = logging.StreamHandler(sys.stderr)
+    console.setFormatter(short_fmt)
+
+    # ── app.log — รวมทุก log จากทั้งสองฝั่ง ──────────────────────────────
+    app_file = RotatingFileHandler(
         log_dir / "app.log",
         maxBytes=5 * 1024 * 1024,   # 5 MB
-        backupCount=5,              # เก็บ app.log + app.log.1 ... app.log.5
+        backupCount=5,
         encoding="utf-8",
     )
-    file_handler.setFormatter(fmt)
+    app_file.setFormatter(full_fmt)
 
+    # ── smartsense.log — เฉพาะฝั่ง Smart-Sense ───────────────────────────
+    # Filter: รับเฉพาะ logger ที่ขึ้นต้นด้วย "smartsense."
+    class SmartSenseFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            return record.name.startswith("smartsense")
+
+    smartsense_file = RotatingFileHandler(
+        log_dir / "smartsense.log",
+        maxBytes=2 * 1024 * 1024,   # 2 MB (แยกไฟล์เล็กกว่า)
+        backupCount=3,
+        encoding="utf-8",
+    )
+    smartsense_file.setFormatter(full_fmt)
+    smartsense_file.addFilter(SmartSenseFilter())
+
+    # ── Mount handlers บน root logger ────────────────────────────────────
     root = logging.getLogger()
     root.setLevel(logging.INFO)
-    # ลบ handler เก่าที่อาจถูก basicConfig ใส่ไว้ (re-import safe)
     for h in list(root.handlers):
         root.removeHandler(h)
     root.addHandler(console)
-    root.addHandler(file_handler)
+    root.addHandler(app_file)
+    root.addHandler(smartsense_file)
 
 
 _setup_logging()
