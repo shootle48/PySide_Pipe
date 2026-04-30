@@ -34,18 +34,20 @@ CREATE TABLE IF NOT EXISTS batches (
     total          INTEGER NOT NULL DEFAULT 0,
     ng             INTEGER NOT NULL DEFAULT 0,
     is_active      INTEGER NOT NULL DEFAULT 1,
-    expected_total INTEGER NOT NULL DEFAULT 0
+    expected_total INTEGER NOT NULL DEFAULT 0,
+    expected_size  TEXT    NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS inspections (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    piece_id    TEXT    NOT NULL UNIQUE,
-    batch_id    TEXT    NOT NULL REFERENCES batches(id),
-    verdict     TEXT    NOT NULL CHECK(verdict IN ('OK', 'NG')),
-    confidence  REAL    NOT NULL,
-    timestamp   TEXT    NOT NULL,
-    detections  TEXT    NOT NULL DEFAULT '[]',
-    image_b64   TEXT
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    piece_id      TEXT    NOT NULL UNIQUE,
+    batch_id      TEXT    NOT NULL REFERENCES batches(id),
+    verdict       TEXT    NOT NULL CHECK(verdict IN ('OK', 'NG')),
+    confidence    REAL    NOT NULL,
+    timestamp     TEXT    NOT NULL,
+    detections    TEXT    NOT NULL DEFAULT '[]',
+    image_b64     TEXT,
+    detected_size TEXT    NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_inspections_batch
@@ -99,6 +101,24 @@ class DatabaseManager:
                 if "duplicate column" not in str(e).lower() and "already exists" not in str(e).lower():
                     logger.error(f"Migration failed unexpectedly: {e}")
                     raise
+            # Migration: add expected_size to batches (size class for this batch: S/M/L)
+            try:
+                self._conn.execute("ALTER TABLE batches ADD COLUMN expected_size TEXT NOT NULL DEFAULT ''")
+                self._conn.commit()
+                logger.info("Migration: added expected_size column to batches.")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower() and "already exists" not in str(e).lower():
+                    logger.error(f"Migration failed unexpectedly: {e}")
+                    raise
+            # Migration: add detected_size to inspections (per-piece classified size)
+            try:
+                self._conn.execute("ALTER TABLE inspections ADD COLUMN detected_size TEXT NOT NULL DEFAULT ''")
+                self._conn.commit()
+                logger.info("Migration: added detected_size column to inspections.")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower() and "already exists" not in str(e).lower():
+                    logger.error(f"Migration failed unexpectedly: {e}")
+                    raise
 
     # ── Batch operations ───────────────────────────────────────────────────
 
@@ -106,7 +126,7 @@ class DatabaseManager:
         with self._lock:
             row = self._conn.execute(
                 """
-                SELECT id, total, ng, expected_total FROM batches
+                SELECT id, total, ng, expected_total, expected_size FROM batches
                 WHERE is_active = 1
                 ORDER BY started_at DESC LIMIT 1
                 """
@@ -116,20 +136,30 @@ class DatabaseManager:
             logger.info(
                 f"Recovered active batch: id={result['id']} "
                 f"total={result['total']} ng={result['ng']} "
-                f"expected={result['expected_total']}"
+                f"expected={result['expected_total']} size={result['expected_size']!r}"
             )
             return result
         return None
 
-    def create_batch(self, batch_id: str, started_at: str, expected_total: int = 0) -> None:
+    def create_batch(
+        self,
+        batch_id: str,
+        started_at: str,
+        expected_total: int = 0,
+        expected_size: str = "",
+    ) -> None:
         with self._lock:
             self._conn.execute(
-                "INSERT INTO batches (id, started_at, total, ng, is_active, expected_total) "
-                "VALUES (?, ?, 0, 0, 1, ?)",
-                (batch_id, started_at, expected_total),
+                "INSERT INTO batches "
+                "(id, started_at, total, ng, is_active, expected_total, expected_size) "
+                "VALUES (?, ?, 0, 0, 1, ?, ?)",
+                (batch_id, started_at, expected_total, expected_size),
             )
             self._conn.commit()
-        logger.info(f"New batch created: {batch_id} (expected={expected_total})")
+        logger.info(
+            f"New batch created: {batch_id} "
+            f"(expected={expected_total} size={expected_size!r})"
+        )
 
     def update_expected_total(self, batch_id: str, expected_total: int) -> None:
         with self._lock:
@@ -168,27 +198,30 @@ class DatabaseManager:
         timestamp: str,
         detections: list,
         image_b64: str = "",
+        detected_size: str = "",
     ) -> None:
         with self._lock:
             self._conn.execute(
                 """
                 INSERT INTO inspections
-                    (piece_id, batch_id, verdict, confidence, timestamp, detections, image_b64)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (piece_id, batch_id, verdict, confidence, timestamp,
+                     detections, image_b64, detected_size)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     piece_id, batch_id, verdict, confidence, timestamp,
-                    json.dumps(detections), image_b64,
+                    json.dumps(detections), image_b64, detected_size,
                 ),
             )
             self._conn.commit()
-        logger.debug(f"Saved inspection: {piece_id} | {verdict}")
+        logger.debug(f"Saved inspection: {piece_id} | {verdict} | size={detected_size!r}")
 
     def get_recent_inspections(self, batch_id: str, limit: int = 50) -> list[dict]:
         with self._lock:
             rows = self._conn.execute(
                 """
-                SELECT piece_id, verdict, confidence, timestamp, detections, image_b64
+                SELECT piece_id, verdict, confidence, timestamp,
+                       detections, image_b64, detected_size
                 FROM   inspections
                 WHERE  batch_id = ?
                 ORDER  BY id DESC
@@ -207,7 +240,7 @@ class DatabaseManager:
             rows = self._conn.execute(
                 """
                 SELECT piece_id, batch_id, verdict, confidence, timestamp,
-                detections, image_b64
+                       detections, image_b64, detected_size
                 FROM   inspections
                 WHERE  image_b64 IS NOT NULL AND image_b64 != ''
                 ORDER  BY timestamp ASC
@@ -221,7 +254,8 @@ class DatabaseManager:
     def get_all_batches(self) -> list[dict]:
         with self._lock:
             rows = self._conn.execute(
-                "SELECT id, started_at, ended_at, total, ng, is_active, expected_total "
+                "SELECT id, started_at, ended_at, total, ng, is_active, "
+                "expected_total, expected_size "
                 "FROM batches ORDER BY started_at DESC"
             ).fetchall()
         return [dict(row) for row in rows]

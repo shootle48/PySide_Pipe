@@ -99,10 +99,12 @@ class PipeInspector:
         min_defect_area:    int   = MIN_DEFECT_AREA,
         inner_radius_ratio: float = INNER_RADIUS_RATIO,
         jpeg_quality:       int   = JPEG_QUALITY,
+        size_classifier=None,    # Optional[SizeClassifier] — None = ข้าม size detect
     ) -> None:
         self.min_defect_area    = min_defect_area
         self.inner_radius_ratio = inner_radius_ratio
         self.jpeg_quality       = jpeg_quality
+        self.size_classifier    = size_classifier
 
     def inspect(self, frame_bgr: np.ndarray) -> dict:
         """
@@ -124,6 +126,8 @@ class PipeInspector:
                              "h": frame_bgr.shape[0]},
                 }],
                 frame_bgr=frame_bgr,
+                pipe_radius_px=None,
+                detected_size="unknown",
             )
 
         cx, cy, radius = circle
@@ -133,7 +137,17 @@ class PipeInspector:
         significant = [c for c in defect_contours if cv2.contourArea(c) > self.min_defect_area]
         verdict = "NG" if significant else "OK"
 
-        logger.info(f"PipeInspector: {verdict} | defects={len(significant)} | pipe=({cx},{cy}) r={radius}")
+        # ── Classify size จาก outer radius ─────────────────────────────────
+        # ถ้าไม่มี classifier ให้ส่ง "" (= ไม่ได้ใช้ feature นี้)
+        if self.size_classifier is not None:
+            detected_size = self.size_classifier.classify(radius)
+        else:
+            detected_size = ""
+
+        logger.info(
+            f"PipeInspector: {verdict} | defects={len(significant)} | "
+            f"pipe=({cx},{cy}) r={radius} size={detected_size!r}"
+        )
 
         inner_area = np.pi * inner_radius ** 2
         detections = self._build_detections(significant)
@@ -144,6 +158,8 @@ class PipeInspector:
             confidence=confidence,
             detections=detections,
             frame_bgr=frame_bgr,
+            pipe_radius_px=int(radius),
+            detected_size=detected_size,
         )
 
     # ── Private CV stages (1-to-1 with notebook cells) ────────────────────
@@ -228,6 +244,8 @@ class PipeInspector:
         confidence: float,
         detections: list,
         frame_bgr: np.ndarray,
+        pipe_radius_px: Optional[int] = None,
+        detected_size: str = "",
     ) -> dict:
         # BGR → RGB so the base64 JPEG is browser/Qt-compatible
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
@@ -238,10 +256,12 @@ class PipeInspector:
             raise RuntimeError("cv2.imencode failed.")
         image_b64 = base64.b64encode(buffer).decode('utf-8')
         return {
-            "verdict":    verdict,
-            "confidence": confidence,
-            "detections": detections,
-            "image_b64":  image_b64,
+            "verdict":        verdict,
+            "confidence":     confidence,
+            "detections":     detections,
+            "image_b64":      image_b64,
+            "pipe_radius_px": pipe_radius_px,
+            "detected_size":  detected_size,
         }
 
 
@@ -273,6 +293,7 @@ class CameraWorker(QThread):
         camera_index:   int   = 0,
         trigger_mode:   str   = "manual",
         timer_interval: float = TIMER_INTERVAL,
+        size_classifier=None,    # Optional[SizeClassifier]; None = ข้าม size detect
     ) -> None:
         super().__init__()
         self._batch_state    = batch_state
@@ -281,11 +302,51 @@ class CameraWorker(QThread):
         self._trigger_mode   = trigger_mode
         self._timer_interval = timer_interval
 
-        self._inspector     = PipeInspector()
+        self._inspector     = PipeInspector(size_classifier=size_classifier)
         self._frame_buffer  = FrameBuffer()
         self._stop_event    = threading.Event()
         self._trigger_event = threading.Event()
         self._cap: Optional[cv2.VideoCapture] = None
+
+    # ── Size validation helper ─────────────────────────────────────────────
+
+    def _apply_size_check(self, result: dict, frame_shape: tuple) -> None:
+        """
+        ถ้า batch ปัจจุบันล็อคขนาดไว้ (expected_size) แต่ขนาดที่ตรวจได้
+        (detected_size) ไม่ตรง → force verdict=NG + เพิ่ม label size_mismatch.
+
+        Mutates `result` in-place. ทำก่อน batch_state.increment() เสมอ
+        เพื่อให้ counter + DB เห็น verdict ที่แก้แล้ว.
+
+        Backward compat:
+          - expected_size = "" → ไม่ตรวจ (batch ไม่ได้ล็อคขนาด)
+          - detected_size = "" → ไม่ตรวจ (size_classifier ไม่ได้ enable)
+        """
+        state = self._batch_state.get_state()
+        expected = state.get("expected_size", "") or ""
+        detected = result.get("detected_size", "") or ""
+
+        if not expected or not detected:
+            return   # ไม่ trigger validation
+
+        if detected == expected:
+            return   # match
+
+        # Mismatch — force NG + เพิ่ม detection label
+        h, w = frame_shape[:2]
+        if result["verdict"] == "OK":
+            result["verdict"] = "NG"
+            # ใช้ confidence = 1.0 เพราะเชื่อ classifier เต็ม
+            result["confidence"] = 1.0
+        result["detections"].append({
+            "label":      "size_mismatch",
+            "confidence": 1.0,
+            "bbox":       {"x": 0, "y": 0, "w": int(w), "h": int(h)},
+        })
+        logger.warning(
+            f"CameraWorker: size mismatch — expected={expected} "
+            f"detected={detected} → force NG"
+        )
 
     # ── Public API ─────────────────────────────────────────────────────────
 
@@ -320,18 +381,22 @@ class CameraWorker(QThread):
             self.status_changed.emit("idle")
             return
 
+        # Size validation — อาจ force verdict=NG ถ้าขนาดไม่ตรง batch
+        self._apply_size_check(result, frame.shape)
+
         batch_snapshot = self._batch_state.increment(result["verdict"])
         piece_id       = f"{batch_snapshot['id']}-{batch_snapshot['seq']:04d}"
         timestamp      = datetime.now(timezone.utc).isoformat()
 
         self._db.save_inspection(
-            piece_id   = piece_id,
-            batch_id   = batch_snapshot["id"],
-            verdict    = result["verdict"],
-            confidence = result["confidence"],
-            timestamp  = timestamp,
-            detections = result["detections"],
-            image_b64  = result.get("image_b64", "") if self._should_save_image(result["verdict"], batch_snapshot["id"]) else "",
+            piece_id      = piece_id,
+            batch_id      = batch_snapshot["id"],
+            verdict       = result["verdict"],
+            confidence    = result["confidence"],
+            timestamp     = timestamp,
+            detections    = result["detections"],
+            image_b64     = result.get("image_b64", "") if self._should_save_image(result["verdict"], batch_snapshot["id"]) else "",
+            detected_size = result.get("detected_size", ""),
         )
         self._db.cleanup_old_data()
 
@@ -528,19 +593,23 @@ class CameraWorker(QThread):
             self.status_changed.emit("idle")
             return
 
+        # Size validation — อาจ force verdict=NG ถ้าขนาดไม่ตรง batch
+        self._apply_size_check(result, frame_bgr.shape)
+
         # Increment batch counters + persist to DB
         batch_snapshot = self._batch_state.increment(result["verdict"])
         piece_id       = f"{batch_snapshot['id']}-{batch_snapshot['seq']:04d}"
         timestamp      = datetime.now(timezone.utc).isoformat()
 
         self._db.save_inspection(
-            piece_id   = piece_id,
-            batch_id   = batch_snapshot["id"],
-            verdict    = result["verdict"],
-            confidence = result["confidence"],
-            timestamp  = timestamp,
-            detections = result["detections"],
-            image_b64  = result.get("image_b64", "") if self._should_save_image(result["verdict"], batch_snapshot["id"]) else "",
+            piece_id      = piece_id,
+            batch_id      = batch_snapshot["id"],
+            verdict       = result["verdict"],
+            confidence    = result["confidence"],
+            timestamp     = timestamp,
+            detections    = result["detections"],
+            image_b64     = result.get("image_b64", "") if self._should_save_image(result["verdict"], batch_snapshot["id"]) else "",
+            detected_size = result.get("detected_size", ""),
         )
         self._db.cleanup_old_data()
 

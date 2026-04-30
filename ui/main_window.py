@@ -37,19 +37,21 @@ from typing import Optional
 from PySide6.QtCore    import QLocale, Qt, QSettings, QTimer, Slot
 from PySide6.QtGui     import QColor, QFont, QIcon
 from PySide6.QtWidgets import (
-    QDialog, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel,
-    QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QProgressBar,
-    QPushButton, QScrollArea, QSizePolicy, QSplitter, QTabWidget, QVBoxLayout,
-    QWidget,
+    QDialog, QDialogButtonBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
+    QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QProgressBar,
+    QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter, QTabWidget,
+    QVBoxLayout, QWidget,
 )
 
-from core.batch_state import BatchStateManager
-from core.database    import DatabaseManager
-from core.pipeline    import CameraWorker
+from core.batch_state    import BatchStateManager
+from core.database       import DatabaseManager
+from core.pipeline       import CameraWorker
+from core.size_classifier import SizeClassifier
 from ui.frame_widget          import FrameWidget
 from ui.db_viewer             import DbViewerDialog
 from ui.camera_select_dialog  import CameraSelectDialog
 from ui.maintenance_widget    import MaintenanceWidget
+from ui.batch_setup_dialog    import request_batch_setup
 from core.rs485_worker import RS485InputWorker, MockRS485DIO
 # Note: `rs485_dio` (real hardware) imports lazily — see _init_rs485() below
 # ไม่ import ตรงนี้เพราะต้องใช้ minimalmodbus/pyserial ที่ไม่มีบน Windows dev
@@ -102,10 +104,13 @@ class MainWindow(QMainWindow):
         self._camera_index = int(self._settings.value("camera/index", CAMERA_INDEX))
 
         # ── Backend singletons ─────────────────────────────────────────────
-        self._db          = DatabaseManager()
+        self._db               = DatabaseManager()
         self._db.cleanup_old_data()   # cleanup ทุกครั้งที่เปิดโปรแกรม
-        self._batch_state = BatchStateManager(db=self._db)
-        self._worker      = self._build_worker(self._camera_index)
+        self._batch_state      = BatchStateManager(db=self._db)
+        # SizeClassifier — โหลด thresholds จาก QSettings, fallback DEFAULT
+        # (ใช้ใน PipeInspector ผ่าน CameraWorker)
+        self._size_classifier  = SizeClassifier()
+        self._worker           = self._build_worker(self._camera_index)
 
         # ── State ──────────────────────────────────────────────────────────
         self._in_result_view  = False
@@ -405,6 +410,15 @@ class MainWindow(QMainWindow):
         exp_row.addWidget(self._expected_label, stretch=1)
         c_layout.addLayout(exp_row)
 
+        # Size row — ขนาดที่ batch นี้ล็อคไว้ (S/M/L) — read-only display
+        size_row = QHBoxLayout()
+        size_row.addWidget(QLabel("Size"))
+        self._size_label = QLabel("—")
+        self._size_label.setAlignment(Qt.AlignRight)
+        self._size_label.setObjectName("expectedLabel")
+        size_row.addWidget(self._size_label, stretch=1)
+        c_layout.addLayout(size_row)
+
         # Progress bar — แสดงความคืบหน้าเทียบกับ expected_total
         self._progress_bar = QProgressBar()
         self._progress_bar.setObjectName("batchProgress")
@@ -650,13 +664,17 @@ class MainWindow(QMainWindow):
         )
 
     def _update_counters(self, batch: dict) -> None:
-        """Refresh TOTAL / NG / Quality Rate / Target from a batch snapshot dict."""
+        """Refresh TOTAL / NG / Quality Rate / Target / Size from a batch snapshot dict."""
         total    = batch.get("total", 0)
         ng       = batch.get("ng", 0)
         expected = batch.get("expected_total", 0)
+        exp_size = batch.get("expected_size", "") or ""
 
         self._counter_total[1].setText(str(total))
         self._counter_ng[1].setText(str(ng))
+
+        # Size display — "—" ถ้ายังไม่ล็อค (legacy batch ก่อน feature นี้)
+        self._size_label.setText(exp_size if exp_size else "—")
 
         # OEE Quality Rate = Good / Total × 100   (ตามนิยาม OEE มาตรฐาน)
         # ถ้า NG = 0 → 100%   ถ้า NG = total → 0%
@@ -764,6 +782,7 @@ class MainWindow(QMainWindow):
         piece_id = result.get("piece_id", "—")
         confs    = result.get("detections", [])
         timestamp = result.get("timestamp", "")
+        det_size = result.get("detected_size", "") or ""
 
         try:
             dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
@@ -773,7 +792,9 @@ class MainWindow(QMainWindow):
 
         detail = confs[0]["label"].replace("_", " ") if confs else "No defect"
         tag    = "[OK]" if verdict == "OK" else "[NG]"
-        text   = f"  {tag}  {piece_id:<20}  {detail:<18}  {time_str}"
+        # Size code 1 ตัว (S/M/L/?/-) ใส่ระหว่าง piece_id กับ detail
+        size_code = (det_size[0] if det_size and det_size != "unknown" else "?") if det_size else "-"
+        text   = f"  {tag}  {piece_id:<20}  {size_code}  {detail:<18}  {time_str}"
 
         item = QListWidgetItem(text)
         item.setFont(QFont("Consolas", 12, QFont.Bold))
@@ -796,10 +817,11 @@ class MainWindow(QMainWindow):
         rows = self._db.get_recent_inspections(batch_id, limit=50)
         for row in reversed(rows):   # DB ส่งมา DESC → reverse ก่อน insertItem(0) จะได้ลำดับถูก
             self._prepend_history_row({
-                "verdict":    row["verdict"],
-                "piece_id":   row["piece_id"],
-                "detections": row["detections"],
-                "timestamp":  row["timestamp"],
+                "verdict":       row["verdict"],
+                "piece_id":      row["piece_id"],
+                "detections":    row["detections"],
+                "timestamp":     row["timestamp"],
+                "detected_size": row.get("detected_size", "") if isinstance(row, dict) else "",
             })
         if not rows:
             placeholder = QListWidgetItem("  No inspections in this batch yet.")
@@ -823,11 +845,12 @@ class MainWindow(QMainWindow):
     def _build_worker(self, camera_index: int) -> CameraWorker:
         """Factory: สร้าง CameraWorker ใหม่ด้วย index ที่กำหนด"""
         return CameraWorker(
-            batch_state    = self._batch_state,
-            db             = self._db,
-            camera_index   = camera_index,
-            trigger_mode   = TRIGGER_MODE,
-            timer_interval = TIMER_INTERVAL,
+            batch_state     = self._batch_state,
+            db              = self._db,
+            camera_index    = camera_index,
+            trigger_mode    = TRIGGER_MODE,
+            timer_interval  = TIMER_INTERVAL,
+            size_classifier = self._size_classifier,
         )
 
     def _connect_worker_signals(self) -> None:
@@ -942,30 +965,61 @@ class MainWindow(QMainWindow):
         t.start()
 
     def _reset_batch(self) -> None:
-        """Reset batch counters and return to live view."""
-        current_expected = self._batch_state.get_state().get("expected_total", 0)
-        expected, ok = QInputDialog.getInt(
-            self, "Reset Batch",
-            "กรอกจำนวนชิ้นที่คาดหวังใน batch ใหม่\n(0 = ไม่ระบุ)",
-            current_expected, 0, 1_000_000,
+        """Reset batch counters and return to live view.
+
+        ใช้ BatchSetupDialog ใหม่ — เลือก size (S/M/L) + Target ในหน้าเดียว
+        Size ถูกล็อคต่อ batch (เปลี่ยนได้แค่ผ่าน Reset ตัวนี้เท่านั้น).
+        """
+        current = self._batch_state.get_state()
+        result = request_batch_setup(
+            parent         = self,
+            default_size   = current.get("expected_size") or "M",
+            default_target = current.get("expected_total", 0),
         )
-        if not ok:
-            return
-        new_state = self._batch_state.reset(expected_total=expected)
+        if result is None:
+            return   # user cancelled
+        size, target = result
+
+        new_state = self._batch_state.reset(
+            expected_total = target,
+            expected_size  = size,
+        )
         self._update_counters(new_state)
         self._history_list.clear()
-        self._frame_widget.show_placeholder("Batch reset — กดปุ่ม Capture เพื่อเริ่มใหม่")
+        self._frame_widget.show_placeholder(
+            f"Batch ใหม่ (size={size}, target={target}) — กดปุ่ม Capture เพื่อเริ่ม"
+        )
 
     def _set_expected(self) -> None:
         """เปลี่ยน target ของ batch ปัจจุบันโดยไม่ reset."""
         current = self._batch_state.get_state().get("expected_total", 0)
-        expected, ok = QInputDialog.getInt(
-            self, "Set Target",
-            "จำนวนชิ้นที่ตั้งเป้าใน batch นี้\n(0 = ไม่ระบุ)",
-            current, 0, 1_000_000,
-        )
-        if not ok:
+
+        # ใช้ custom dialog แทน QInputDialog.getInt เพื่อ set locale ป้องกันเลขไทย
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Set Target")
+        dlg.setModal(True)
+        dlg.setMinimumWidth(320)
+        _layout = QVBoxLayout(dlg)
+        _layout.setContentsMargins(20, 20, 20, 20)
+        _layout.setSpacing(12)
+        _lbl = QLabel("จำนวนชิ้นที่ตั้งเป้าใน batch นี้\n(0 = ไม่ระบุ)")
+        _layout.addWidget(_lbl)
+        _spin = QSpinBox()
+        _spin.setRange(0, 1_000_000)
+        _spin.setValue(current)
+        _spin.setFixedHeight(44)
+        _spin.setAlignment(Qt.AlignCenter)
+        # Force Arabic numerals — ป้องกันเลขไทย (๐-๙) บน locale ภาษาไทย
+        _spin.setLocale(QLocale(QLocale.Language.English, QLocale.Country.UnitedStates))
+        _layout.addWidget(_spin)
+        _btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        _btns.accepted.connect(dlg.accept)
+        _btns.rejected.connect(dlg.reject)
+        _layout.addWidget(_btns)
+
+        if dlg.exec() != QDialog.Accepted:
             return
+        expected = _spin.value()
         new_state = self._batch_state.set_expected_total(expected)
         self._update_counters(new_state)
 

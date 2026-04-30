@@ -163,9 +163,9 @@ class DbViewerDialog(QDialog):
         # ── Table ──────────────────────────────────────────────────────
         self._table = QTableWidget()
         self._table.setObjectName("inspectionTable")
-        self._table.setColumnCount(5)
+        self._table.setColumnCount(6)
         self._table.setHorizontalHeaderLabels([
-            "Piece ID", "Verdict", "Confidence", "Defects", "Timestamp",
+            "Piece ID", "Verdict", "Size", "Confidence", "Defects", "Timestamp",
         ])
         self._table.horizontalHeader().setStretchLastSection(True)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -174,8 +174,9 @@ class DbViewerDialog(QDialog):
         self._table.verticalHeader().setVisible(False)
         self._table.setColumnWidth(0, 180)
         self._table.setColumnWidth(1, 80)
-        self._table.setColumnWidth(2, 100)
-        self._table.setColumnWidth(3, 120)
+        self._table.setColumnWidth(2, 60)    # Size
+        self._table.setColumnWidth(3, 100)   # Confidence
+        self._table.setColumnWidth(4, 140)   # Defects
         self._table.itemSelectionChanged.connect(self._on_row_selected)
         v_split.addWidget(self._table)
 
@@ -314,15 +315,22 @@ class DbViewerDialog(QDialog):
                 verdict_item.setBackground(QColor("#e8f5e9"))
             self._table.setItem(row_idx, 1, verdict_item)
 
+            # Size (S/M/L/unknown — empty if legacy row)
+            size_text = row_data.get("detected_size", "") or "—"
+            size_item = QTableWidgetItem(size_text)
+            size_item.setTextAlignment(Qt.AlignCenter)
+            size_item.setFont(QFont("Segoe UI", 12, QFont.Bold))
+            self._table.setItem(row_idx, 2, size_item)
+
             # Confidence
             conf_item = QTableWidgetItem(f"{row_data['confidence']:.1%}")
             conf_item.setTextAlignment(Qt.AlignCenter)
-            self._table.setItem(row_idx, 2, conf_item)
+            self._table.setItem(row_idx, 3, conf_item)
 
             # Defects
             dets = row_data.get("detections", [])
             det_text = ", ".join(d.get("label", "unknown") for d in dets) if dets else "—"
-            self._set_cell(row_idx, 3, det_text)
+            self._set_cell(row_idx, 4, det_text)
 
             # Timestamp (local time)
             ts = row_data["timestamp"]
@@ -331,7 +339,7 @@ class DbViewerDialog(QDialog):
                 ts = dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
             except Exception:
                 pass
-            self._set_cell(row_idx, 4, ts)
+            self._set_cell(row_idx, 5, ts)
 
             # Store image_b64 parallel to row index
             self._row_images.append(row_data.get("image_b64") or "")
@@ -610,12 +618,16 @@ class DbViewerDialog(QDialog):
         try:
             with open(path, "w", newline="", encoding="utf-8-sig") as f:  # utf-8-sig = BOM for Excel
                 writer = csv.writer(f)
-                writer.writerow(["piece_id", "verdict", "confidence", "detections", "timestamp"])
+                writer.writerow([
+                    "piece_id", "verdict", "detected_size",
+                    "confidence", "detections", "timestamp",
+                ])
                 for r in rows:
                     dets = ", ".join(d["label"] for d in r.get("detections", []))
                     writer.writerow([
                         r["piece_id"],
                         r["verdict"],
+                        r.get("detected_size", "") or "",
                         f"{r['confidence']:.3f}",
                         dets or "—",
                         r["timestamp"],
@@ -688,7 +700,11 @@ class DbViewerDialog(QDialog):
             labels = ", ".join(d.get("label", "unknown") for d in dets) if dets else ""
             total, ng = batch_counters.get(r["batch_id"], (0, 0))
             csv_rows.append([
-                piece_id, r["batch_id"], r["verdict"], f"{r['confidence']:.3f}",
+                piece_id,
+                r["batch_id"],
+                r["verdict"],
+                r.get("detected_size", "") or "",
+                f"{r['confidence']:.3f}",
                 labels, total, ng, r["timestamp"],
             ])
 
@@ -697,8 +713,8 @@ class DbViewerDialog(QDialog):
             with open(out_dir / "annotations.csv", "w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.writer(f)
                 writer.writerow([
-                    "piece_id", "batch_id", "verdict", "confidence",
-                    "label", "total", "ng", "timestamp",
+                    "piece_id", "batch_id", "verdict", "detected_size",
+                    "confidence", "label", "total", "ng", "timestamp",
                 ])
                 writer.writerows(csv_rows)
         except Exception as exc:

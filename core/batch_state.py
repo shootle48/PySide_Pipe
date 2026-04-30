@@ -24,6 +24,7 @@ class _BatchData:
     total: int          = 0   # display counter (ใช้ COUNT จาก DB)
     ng: int             = 0
     expected_total: int = 0   # จำนวนชิ้นที่คาดหวังใน batch นี้ (user input)
+    expected_size: str  = ""  # ขนาดที่ล็อคใน batch นี้ ("S"/"M"/"L"/"" = ไม่ล็อค)
 
 
 class BatchStateManager:
@@ -57,6 +58,7 @@ class BatchStateManager:
                     total=recovered["total"],
                     ng=recovered["ng"],
                     expected_total=recovered.get("expected_total", 0),
+                    expected_size=recovered.get("expected_size", "") or "",
                 )
 
         new_id = self._generate_batch_id()
@@ -78,17 +80,24 @@ class BatchStateManager:
             self._db.update_batch_counters(snapshot["id"], snapshot["total"], snapshot["ng"])
         return snapshot
 
-    def reset(self, expected_total: int = 0) -> dict:
+    def reset(self, expected_total: int = 0, expected_size: str = "") -> dict:
         now = datetime.now(timezone.utc).isoformat()
         new_id = self._generate_batch_id()
         with self._lock:
             old_id = self._data.batch_id
             if self._db is not None:
                 self._db.close_active_batch(old_id, now)
-                self._db.create_batch(new_id, now, expected_total)
-            self._data = _BatchData(batch_id=new_id, expected_total=expected_total)
+                self._db.create_batch(new_id, now, expected_total, expected_size)
+            self._data = _BatchData(
+                batch_id=new_id,
+                expected_total=expected_total,
+                expected_size=expected_size,
+            )
             snapshot = self._snapshot()
-        logger.info(f"Batch reset: {old_id} → {new_id} (expected={expected_total})")
+        logger.info(
+            f"Batch reset: {old_id} → {new_id} "
+            f"(expected={expected_total} size={expected_size!r})"
+        )
         return snapshot
 
     def set_expected_total(self, expected_total: int) -> dict:
@@ -114,6 +123,7 @@ class BatchStateManager:
                 self._data.total          = recovered["total"]
                 self._data.ng             = recovered["ng"]
                 self._data.expected_total = recovered.get("expected_total", 0)
+                self._data.expected_size  = recovered.get("expected_size", "") or ""
             return self._snapshot()
 
     def _snapshot(self) -> dict:
@@ -121,6 +131,7 @@ class BatchStateManager:
             "id":             self._data.batch_id,
             "seq":            self._data.seq,
             "expected_total": self._data.expected_total,
+            "expected_size":  self._data.expected_size,
             "total": self._data.total,
             "ng":    self._data.ng,
         }

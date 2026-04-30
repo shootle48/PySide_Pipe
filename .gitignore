@@ -9,11 +9,10 @@ venv/
 env/
 
 # Runtime output (do not commit)
-logs/
+logs
 exports/
 data/
 Dataset_pipe
-app.log
 # Claude Code (local dev tools — don't share)
 .claude/
 DEPLOYMENT.md
