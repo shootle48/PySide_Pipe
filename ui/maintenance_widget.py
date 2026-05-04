@@ -180,6 +180,11 @@ class MaintenanceWidget(QWidget):
     STATUS_DRIFTED   = "drifted"
     STATUS_NO_REF    = "no_reference"
 
+    # emit เมื่อ drift status เปลี่ยน (transition เท่านั้น ไม่ emit ทุก frame)
+    # str  = status constant ("stable" / "drifted" / ...)
+    # float = drift score ณ ขณะนั้น (0.0 ถ้า stable/reset)
+    drift_status_changed = Signal(str, float)
+
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._settings = QSettings()
@@ -567,6 +572,8 @@ class MaintenanceWidget(QWidget):
         if new_status != self._status:
             self._status = new_status
             self._refresh_status()
+            # แจ้ง MainWindow เฉพาะตอน transition (ไม่ emit ทุก frame)
+            self.drift_status_changed.emit(self._status, float(drift_score))
         else:
             # update drift numeric display even without status change
             self._drift_value.setText(f"Drift score: {drift_score:.1f} / threshold {self._threshold}")

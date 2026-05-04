@@ -116,6 +116,7 @@ class MainWindow(QMainWindow):
         self._in_result_view  = False
         self._upload_mode     = False   # True = Upload Image mode, False = Camera mode
         self._file_inspecting = False   # guard: ป้องกัน inspect_file() วิ่ง parallel
+        self._camera_online   = True    # ติดตาม camera state สำหรับ _on_drift_status
         self._result_timer    = QTimer(self)
         self._result_timer.setSingleShot(True)
         self._result_timer.timeout.connect(self._return_to_live)
@@ -224,6 +225,9 @@ class MainWindow(QMainWindow):
         self._maintenance = MaintenanceWidget()
         self._tabs.addTab(self._maintenance, "Maintenance")
 
+        # เชื่อม drift signal → แสดง banner + block capture บนหน้า Inspection
+        self._maintenance.drift_status_changed.connect(self._on_drift_status)
+
         return self._tabs
 
     # ── Header ─────────────────────────────────────────────────────────────
@@ -323,6 +327,20 @@ class MainWindow(QMainWindow):
         self._live_badge.setVisible(False)   # shown after camera opens
 
         layout.addWidget(self._view_container, stretch=1)
+
+        # Drift warning banner — ซ่อนไว้ แสดงเมื่อ zone drifted
+        self._drift_banner = QLabel(
+            "⚠  กล้องขยับจากตำแหน่ง Calibrate — กรุณาไปหน้า Maintenance แล้ว Save Reference ใหม่"
+        )
+        self._drift_banner.setAlignment(Qt.AlignCenter)
+        self._drift_banner.setWordWrap(True)
+        self._drift_banner.setFixedHeight(44)
+        self._drift_banner.setStyleSheet(
+            "background: #FEF08A; color: #78350F; font-size: 13px; font-weight: bold;"
+            "border-top: 2px solid #F59E0B; border-bottom: 2px solid #F59E0B; padding: 4px 12px;"
+        )
+        self._drift_banner.setVisible(False)
+        layout.addWidget(self._drift_banner)
 
         # Mode toggle + action button bar
         capture_bar = QFrame()
@@ -449,14 +467,6 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(counters_card)
 
-        # ── Last result card ───────────────────────────────────────────────
-        last_card = self._make_card("LAST RESULT")
-        self._last_result_layout = last_card.layout()
-        self._last_result_placeholder = QLabel("No result yet.")
-        self._last_result_placeholder.setObjectName("dimText")
-        self._last_result_layout.addWidget(self._last_result_placeholder)
-        layout.addWidget(last_card)
-
         # ── History feed card ──────────────────────────────────────────────
         history_card = self._make_card("RECENT INSPECTIONS")
         h_layout = history_card.layout()
@@ -546,8 +556,6 @@ class MainWindow(QMainWindow):
         # Update batch counters
         self._update_counters(result["batch"])
 
-        # Update last result card
-        self._update_last_result(result)
 
         # Prepend to history
         self._prepend_history_row(result)
@@ -617,6 +625,8 @@ class MainWindow(QMainWindow):
         - online=True : กลับมา "Camera online" + enable capture
         (ไม่เด้ง dialog เพราะ offline ไม่ใช่ fatal — recover เองได้)
         """
+        self._camera_online = online   # ติดตามไว้ให้ _on_drift_status ใช้
+
         if self._upload_mode:
             return   # Upload mode ไม่สนกล้อง
 
@@ -723,58 +733,6 @@ class MainWindow(QMainWindow):
             self._progress_bar.setVisible(False)
 
         self._batch_id_label.setText(batch.get("id", "—"))
-
-    def _update_last_result(self, result: dict) -> None:
-        """Replace last-result card content with the new result."""
-        # Clear old widgets
-        while self._last_result_layout.count() > 1:   # keep title at index 0
-            item = self._last_result_layout.takeAt(1)
-            if item.widget():
-                item.widget().deleteLater()
-
-        verdict   = result["verdict"]
-        piece_id  = result.get("piece_id", "—")
-        timestamp = result.get("timestamp", "")
-        confs     = result.get("detections", [])
-
-        # Verdict badge
-        verdict_lbl = QLabel(verdict)
-        verdict_lbl.setObjectName(f"verdictBadge_{verdict}")
-        verdict_lbl.setAlignment(Qt.AlignCenter)
-        self._last_result_layout.addWidget(verdict_lbl)
-
-        # Piece ID + time
-        meta_row = QHBoxLayout()
-        piece_lbl = QLabel(piece_id)
-        piece_lbl.setObjectName("dimText")
-        meta_row.addWidget(piece_lbl)
-        meta_row.addStretch()
-        if timestamp:
-            try:
-                dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-                time_str = dt.astimezone().strftime("%H:%M:%S")
-            except Exception:
-                time_str = timestamp[-8:]
-            time_lbl = QLabel(time_str)
-            time_lbl.setObjectName("dimText")
-            meta_row.addWidget(time_lbl)
-        self._last_result_layout.addLayout(meta_row)
-
-        # Detection rows
-        if confs:
-            for det in confs[:3]:
-                row = QHBoxLayout()
-                lbl = QLabel(det["label"].replace("_", " ").title())
-                conf = QLabel(f"{det['confidence']:.0%}")
-                conf.setObjectName("ngText")
-                row.addWidget(lbl)
-                row.addStretch()
-                row.addWidget(conf)
-                self._last_result_layout.addLayout(row)
-        else:
-            ok_lbl = QLabel("No defects detected")
-            ok_lbl.setObjectName("okText")
-            self._last_result_layout.addWidget(ok_lbl)
 
     def _prepend_history_row(self, result: dict) -> None:
         """Add one row at the top of the history list."""
@@ -1023,11 +981,6 @@ class MainWindow(QMainWindow):
         new_state = self._batch_state.set_expected_total(expected)
         self._update_counters(new_state)
 
-        # Clear last result card
-        while self._last_result_layout.count() > 1:
-            item = self._last_result_layout.takeAt(1)
-            if item.widget():
-                item.widget().deleteLater()
 
         # Return to live view
         self._result_timer.stop()
@@ -1054,6 +1007,32 @@ class MainWindow(QMainWindow):
         self._db.close()
         logger.info("MainWindow: shutdown complete.")
         event.accept()
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Drift status handler
+    # ══════════════════════════════════════════════════════════════════════
+
+    @Slot(str, float)
+    def _on_drift_status(self, status: str, score: float) -> None:
+        """รับ signal จาก MaintenanceWidget เมื่อ drift status เปลี่ยน.
+
+        drifted → แสดง banner เหลือง + บล็อก Capture
+        stable  → ซ่อน banner + คืน Capture (ถ้า camera online)
+        """
+        if status == "drifted":
+            self._drift_banner.setVisible(True)
+            self._capture_btn.setEnabled(False)
+            self._capture_btn.setToolTip(
+                f"กล้องขยับ (drift score {score:.1f}) — ไปหน้า Maintenance แล้ว Save Reference ใหม่ก่อน"
+            )
+            logger.warning(f"Zone drifted (score={score:.1f}) — capture blocked")
+        else:
+            # stable / idle / no_reference → คืนสถานะปกติ
+            self._drift_banner.setVisible(False)
+            self._capture_btn.setToolTip("")
+            # enable เฉพาะถ้า camera online (ไม่ override _on_camera_health)
+            if self._camera_online:
+                self._capture_btn.setEnabled(True)
 
     # ══════════════════════════════════════════════════════════════════════
     # Stylesheet
