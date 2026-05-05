@@ -363,46 +363,7 @@ class MaintenanceWidget(QWidget):
                 font-family: "Consolas", monospace;
             }
 
-            /* Primary action — blue */
-            QPushButton#primaryBtn {
-                background: #1565c0;
-                color: #ffffff;
-                border: 2px solid #0d47a1;
-                border-radius: 8px;
-                font-size: 15px;
-                font-weight: bold;
-                letter-spacing: 0.5px;
-                padding: 10px;
-            }
-            QPushButton#primaryBtn:hover  { background: #1976d2; }
-            QPushButton#primaryBtn:pressed { background: #0d47a1; }
-
-            /* Success action — green (Save Reference) */
-            QPushButton#successBtn {
-                background: #2e7d32;
-                color: #ffffff;
-                border: 2px solid #1b5e20;
-                border-radius: 8px;
-                font-size: 15px;
-                font-weight: bold;
-                letter-spacing: 0.5px;
-                padding: 10px;
-            }
-            QPushButton#successBtn:hover  { background: #388e3c; }
-            QPushButton#successBtn:pressed { background: #1b5e20; }
-
-            /* Secondary / danger — outline */
-            QPushButton#secondaryBtn {
-                background: #ffffff;
-                color: #c62828;
-                border: 2px solid #c62828;
-                border-radius: 8px;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 8px;
-            }
-            QPushButton#secondaryBtn:hover  { background: #ffebee; }
-            QPushButton#secondaryBtn:pressed { background: #ffcdd2; }
+            /* Button palette — defined canonically in MainWindow QSS; no overrides here */
 
             /* Slider — bigger handle for touch */
             QSlider::groove:horizontal {
@@ -637,6 +598,7 @@ class MaintenanceWidget(QWidget):
     def _flash_status(self, msg: str) -> None:
         self._instruct.setText(msg)
 
+    @Slot(int)
     def _on_threshold_changed(self, value: int) -> None:
         self._threshold = value
         self._threshold_label.setText(str(value))

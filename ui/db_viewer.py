@@ -19,6 +19,7 @@ Layout:
 
 from __future__ import annotations
 
+import base64
 import csv
 import logging
 import re
@@ -396,8 +397,7 @@ class DbViewerDialog(QDialog):
             return
 
         try:
-            import base64 as _b64
-            img_bytes = _b64.b64decode(b64)
+            img_bytes = base64.b64decode(b64)
             qimage    = QImage.fromData(img_bytes)
             if qimage.isNull():
                 raise ValueError("QImage decode returned null")
@@ -492,7 +492,7 @@ class DbViewerDialog(QDialog):
 
         dlg.exec()
 
-    @Slot()
+    @Slot(object, object)
     def _on_batch_selected(self, current, previous) -> None:
         if current is None:
             return
@@ -648,9 +648,6 @@ class DbViewerDialog(QDialog):
           └── annotations.csv  (piece_id, batch_id, verdict, confidence,
                                label, bbox_x, bbox_y, bbox_w, bbox_h, timestamp)
         """
-        import base64
-        from pathlib import Path
-
         target_dir = QFileDialog.getExistingDirectory(
             self, "เลือกโฟลเดอร์ปลายทางสำหรับ Dataset"
         )
@@ -828,44 +825,7 @@ class DbViewerDialog(QDialog):
                 padding: 4px 8px;
             }
 
-            /* Buttons — secondary (outline blue) */
-            #secondaryBtn {
-                background: #ffffff;
-                color: #1565c0;
-                border: 2px solid #1565c0;
-                border-radius: 6px;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 8px 16px;
-            }
-            #secondaryBtn:hover {
-                background: #e3f2fd;
-            }
-            #secondaryBtn:pressed {
-                background: #bbdefb;
-            }
-            #secondaryBtn:disabled {
-                color: #a8b0ba;
-                border-color: #cbd1d9;
-                background: #eef0f3;
-            }
-
-            /* Danger button (outline red) */
-            #dangerBtn {
-                background: #ffffff;
-                color: #c62828;
-                border: 2px solid #c62828;
-                border-radius: 6px;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 8px 16px;
-            }
-            #dangerBtn:hover {
-                background: #ffebee;
-            }
-            #dangerBtn:pressed {
-                background: #ffcdd2;
-            }
+            /* Button palette (secondaryBtn/dangerBtn) — defined canonically in MainWindow QSS */
 
             /* Big primary CLOSE button */
             #closeBtn {

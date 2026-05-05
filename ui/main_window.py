@@ -160,10 +160,10 @@ class MainWindow(QMainWindow):
 
         elif RS485_MODE == "real":
             try:
-                from rs485_dio import RS485DIO   # lazy — needs minimalmodbus
+                from rs485_dio import RS485DIO
             except ImportError as exc:
                 logger.error(
-                    f"RS485: cannot import rs485_dio ({exc}). "
+                    f"RS485: cannot import rs485_dio ({exc}). " 
                     f"Install `pip install minimalmodbus pyserial` or set RS485_MODE='off'/'mock'."
                 )
                 return
@@ -1303,6 +1303,33 @@ class MainWindow(QMainWindow):
                 padding: 4px;
             }
 
+            /* ── Canonical button palette (authoritative — child widgets inherit) ─ */
+            QPushButton#primaryBtn {
+                background: #1565c0;
+                color: #ffffff;
+                border: 2px solid #0d47a1;
+                border-radius: 8px;
+                font-size: 15px;
+                font-weight: bold;
+                letter-spacing: 0.5px;
+                padding: 10px;
+            }
+            QPushButton#primaryBtn:hover   { background: #1976d2; }
+            QPushButton#primaryBtn:pressed { background: #0d47a1; }
+
+            QPushButton#successBtn {
+                background: #2e7d32;
+                color: #ffffff;
+                border: 2px solid #1b5e20;
+                border-radius: 8px;
+                font-size: 15px;
+                font-weight: bold;
+                letter-spacing: 0.5px;
+                padding: 10px;
+            }
+            QPushButton#successBtn:hover   { background: #388e3c; }
+            QPushButton#successBtn:pressed { background: #1b5e20; }
+
             /* ── Secondary / Reset buttons ────────────────────────────── */
             #secondaryBtn {
                 background: #ffffff;
@@ -1314,12 +1341,22 @@ class MainWindow(QMainWindow):
                 letter-spacing: 0.5px;
                 padding: 10px;
             }
-            #secondaryBtn:hover {
-                background: #e3f2fd;
+            #secondaryBtn:hover    { background: #e3f2fd; }
+            #secondaryBtn:pressed  { background: #bbdefb; }
+            #secondaryBtn:disabled { color: #a8b0ba; border-color: #cbd1d9; background: #eef0f3; }
+
+            /* Danger button (outline red) */
+            #dangerBtn {
+                background: #ffffff;
+                color: #c62828;
+                border: 2px solid #c62828;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 10px;
             }
-            #secondaryBtn:pressed {
-                background: #bbdefb;
-            }
+            #dangerBtn:hover   { background: #ffebee; }
+            #dangerBtn:pressed { background: #ffcdd2; }
             #resetBtn {
                 background: #ffffff;
                 color: #52606d;

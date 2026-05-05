@@ -356,10 +356,12 @@ class DatabaseManager:
         เรียกหลัง save_inspection() ทุกครั้ง
         Rule 1 — Age  : ลบ record เก่ากว่า MAX_RECORD_AGE_DAYS
         Rule 2 — Size : ถ้า DB > MAX_DB_SIZE_MB → ลบ 40% เก่าสุด เก็บ 60% ใหม่สุด
+        Recalculates batch counters only when at least one record was actually deleted.
         """
-        self._cleanup_by_age()
-        self._cleanup_by_size()
-        self._recalculate_all_batch_counters()
+        age_deleted  = self._cleanup_by_age()
+        size_deleted = self._cleanup_by_size()
+        if age_deleted or size_deleted:
+            self._recalculate_all_batch_counters()
 
     def _recalculate_all_batch_counters(self) -> None:
         """Sync batches.total / batches.ng ให้ตรงกับ inspections จริงหลัง cleanup."""
@@ -377,7 +379,8 @@ class DatabaseManager:
             self._conn.commit()
         logger.info("Recalculated all batch counters after cleanup.")
 
-    def _cleanup_by_age(self) -> None:
+    def _cleanup_by_age(self) -> bool:
+        """Returns True if any records were deleted."""
         cutoff = (
             datetime.now(timezone.utc) - timedelta(days=MAX_RECORD_AGE_DAYS)
         ).isoformat()
@@ -391,11 +394,14 @@ class DatabaseManager:
                     f"Cleanup [age]: removed {deleted} records "
                     f"older than {MAX_RECORD_AGE_DAYS} days."
                 )
+                return True
+        return False
 
-    def _cleanup_by_size(self) -> None:
+    def _cleanup_by_size(self) -> bool:
+        """Returns True if any records were deleted."""
         db_mb = self._db_path.stat().st_size / (1024 * 1024)
         if db_mb <= MAX_DB_SIZE_MB:
-            return
+            return False
 
         with self._lock:
             total = self._conn.execute(
@@ -403,7 +409,7 @@ class DatabaseManager:
             ).fetchone()[0]
             delete_count = int(total * (1 - CLEANUP_KEEP_RATIO))   # 40%
             if delete_count <= 0:
-                return
+                return False
             self._conn.execute(
                 """
                 DELETE FROM inspections WHERE id IN (
@@ -418,6 +424,7 @@ class DatabaseManager:
                 f"Cleanup [size]: DB was {db_mb:.1f} MB, "
                 f"removed {delete_count} oldest records (kept {CLEANUP_KEEP_RATIO:.0%})."
             )
+        return True
 
     def close(self) -> None:
         try:

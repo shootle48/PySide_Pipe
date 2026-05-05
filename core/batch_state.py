@@ -77,7 +77,13 @@ class BatchStateManager:
             snapshot = self._snapshot()
 
         if self._db is not None:
-            self._db.update_batch_counters(snapshot["id"], snapshot["total"], snapshot["ng"])
+            try:
+                self._db.update_batch_counters(snapshot["id"], snapshot["total"], snapshot["ng"])
+            except Exception as exc:
+                logger.error(
+                    f"DB write failed (counter will be corrected on next sync): {exc}",
+                    exc_info=True,
+                )
         return snapshot
 
     def reset(self, expected_total: int = 0, expected_size: str = "") -> dict:

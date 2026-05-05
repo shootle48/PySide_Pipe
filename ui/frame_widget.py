@@ -82,7 +82,7 @@ class FrameWidget(QWidget):
         h, w, ch = frame_bgr.shape
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         qimage = QImage(frame_rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        self._pixmap      = QPixmap.fromImage(qimage)
+        self._pixmap      = QPixmap.fromImage(qimage.copy())  # .copy() — frame buffer may be reused
         self._detections  = []
         self._is_placeholder = False
         self.update()

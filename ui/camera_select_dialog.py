@@ -93,30 +93,49 @@ class CameraSelectDialog(QDialog):
         btn_row.addWidget(self._ok_btn)
         layout.addLayout(btn_row)
 
-        # Apply stylesheet ให้เข้ากับ main window
+        # Light industrial HMI theme — ตรงกับ main_window.py palette
         self.setStyleSheet("""
-            QDialog { background: #141720; color: #e8eaf0; }
-            QLabel  { color: #e8eaf0; font-size: 12px; }
+            QDialog {
+                background: #eef0f3;
+                color: #1a1d23;
+                font-family: "Segoe UI", system-ui, sans-serif;
+                font-size: 14px;
+            }
+            QLabel { color: #1a1d23; font-size: 13px; }
             QListWidget {
-                background: #0d0f14;
-                border: 1px solid #2a2f45;
-                border-radius: 4px;
-                color: #e8eaf0;
+                background: #ffffff;
+                border: 1px solid #cbd1d9;
+                border-radius: 6px;
+                color: #1a1d23;
                 font-family: "Consolas", monospace;
-                font-size: 12px;
+                font-size: 13px;
+                padding: 2px;
             }
-            QListWidget::item { padding: 6px 4px; }
-            QListWidget::item:selected { background: #1c2a3a; color: #60b4ff; }
+            QListWidget::item { padding: 10px 8px; border-bottom: 1px solid #eef0f3; }
+            QListWidget::item:selected {
+                background: #e3f2fd;
+                border-left: 4px solid #1565c0;
+                color: #0d47a1;
+            }
+            QListWidget::item:hover:!selected { background: #f1f3f6; }
             QPushButton {
-                background: #1c1f2e;
-                color: #e8eaf0;
-                border: 1px solid #2a2f45;
-                border-radius: 4px;
-                padding: 6px 14px;
-                font-size: 12px;
+                background: #ffffff;
+                color: #1a1d23;
+                border: 2px solid #a8b0ba;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 13px;
+                font-weight: bold;
             }
-            QPushButton:hover { background: #2a2f45; border-color: #3a4060; }
-            QPushButton:default { background: #1a3a5c; color: #60b4ff; border-color: #2a5a8c; }
+            QPushButton:hover { background: #e3f2fd; border-color: #1565c0; color: #0d47a1; }
+            QPushButton:pressed { background: #bbdefb; }
+            QPushButton:default {
+                background: #1565c0;
+                color: #ffffff;
+                border: 2px solid #0d47a1;
+            }
+            QPushButton:default:hover { background: #1976d2; }
+            QPushButton:default:pressed { background: #0d47a1; }
         """)
 
         # Initial scan
