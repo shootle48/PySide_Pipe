@@ -166,7 +166,7 @@ class PipeInspector:
 
     def _find_pipe_circle(self, frame_bgr: np.ndarray) -> Optional[tuple]:
         gray  = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        blur  = cv2.GaussianBlur(gray, (31, 31), 0)
+        blur  = cv2.medianBlur(gray, 11)
         adaptive = cv2.adaptiveThreshold(
             blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY_INV, 201, 10,
