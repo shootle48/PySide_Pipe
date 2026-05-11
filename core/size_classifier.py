@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -37,9 +38,9 @@ logger = logging.getLogger(__name__)
 # ── Default thresholds — คาดเดาเริ่มต้น ปรับเองได้ภายหลัง ────────────────
 # (rmin, rmax) ในหน่วยพิกเซล (radius ของ outer pipe circle)
 DEFAULT_SIZE_THRESHOLDS: dict[str, tuple[int, int]] = {
-    "S": (40, 90),
-    "M": (90, 140),
-    "L": (140, 200),
+    "S": (40, 120),
+    "M": (120, 160),
+    "L": (160, 250),
 }
 
 # QSettings key สำหรับเก็บ thresholds ที่ลูกค้า calibrate เอง
@@ -63,6 +64,7 @@ class SizeClassifier:
             thresholds: ถ้าระบุ → ใช้ค่านี้
                         ถ้า None → ลองโหลดจาก QSettings, fallback DEFAULT
         """
+        self._lock = threading.Lock()
         if thresholds is not None:
             self._thresholds = self._validate(thresholds)
             logger.info(f"SizeClassifier: using injected thresholds {self._thresholds}")
@@ -85,15 +87,17 @@ class SizeClassifier:
         if radius_px is None or radius_px <= 0:
             return UNKNOWN_SIZE
 
-        for size, (rmin, rmax) in self._thresholds.items():
-            if rmin <= radius_px <= rmax:
-                return size
+        with self._lock:
+            for size, (rmin, rmax) in self._thresholds.items():
+                if rmin <= radius_px <= rmax:
+                    return size
 
         return UNKNOWN_SIZE
 
     def get_thresholds(self) -> dict[str, tuple[int, int]]:
         """คืน thresholds ปัจจุบัน (copy เพื่อไม่ให้ caller แก้โดยบังเอิญ)"""
-        return dict(self._thresholds)
+        with self._lock:
+            return dict(self._thresholds)
 
     def update_thresholds(self, new_thresholds: dict[str, tuple[int, int]]) -> None:
         """
@@ -104,7 +108,8 @@ class SizeClassifier:
                             ต้องมี key "S", "M", "L" ครบ และ rmin < rmax
         """
         validated = self._validate(new_thresholds)
-        self._thresholds = validated
+        with self._lock:
+            self._thresholds = validated
         self._save_to_qsettings(validated)
         logger.info(f"SizeClassifier: thresholds updated → {validated}")
 
@@ -160,7 +165,7 @@ class SizeClassifier:
             validated = SizeClassifier._validate(converted)
             logger.info(f"SizeClassifier: loaded thresholds {validated}")
             return validated
-        except Exception as exc:
+        except (ImportError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             logger.warning(
                 f"SizeClassifier: failed to load thresholds ({exc}), using defaults"
             )
@@ -175,5 +180,5 @@ class SizeClassifier:
             # แปลง tuple → list สำหรับ JSON
             payload = {k: list(v) for k, v in thresholds.items()}
             settings.setValue(QSETTINGS_KEY, json.dumps(payload))
-        except Exception as exc:
+        except (ImportError, TypeError) as exc:
             logger.error(f"SizeClassifier: failed to save thresholds: {exc}")

@@ -13,6 +13,7 @@ import json
 import logging
 import sqlite3
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -25,6 +26,7 @@ DEFAULT_DB_PATH = Path(__file__).parent.parent / "data" / "pipe_inspector.db"
 MAX_RECORD_AGE_DAYS = 90     # ลบ record ที่เก่ากว่า 3 เดือน
 MAX_DB_SIZE_MB      = 32_768  # 32 GB — ถ้า DB ใหญ่กว่านี้ → cleanup
 CLEANUP_KEEP_RATIO  = 0.60   # เก็บ 60% ใหม่สุด, ลบ 40% เก่าสุด
+CLEANUP_INTERVAL_S  = 300    # minimum seconds between cleanup runs (throttle)
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS batches (
@@ -71,6 +73,7 @@ class DatabaseManager:
             detect_types=sqlite3.PARSE_DECLTYPES,
         )
         self._conn.row_factory = sqlite3.Row
+        self._last_cleanup_at: float = 0.0   # throttle: last time cleanup_old_data ran
         self._apply_pragmas()
         self._create_schema()
         logger.info(f"Database ready: {db_path}")
@@ -80,45 +83,25 @@ class DatabaseManager:
         self._conn.execute("PRAGMA synchronous  = NORMAL")
         self._conn.execute("PRAGMA foreign_keys = ON")
 
+    def _add_column_if_missing(self, table: str, column: str, col_def: str) -> None:
+        """Run ALTER TABLE … ADD COLUMN, silently ignore 'already exists' errors."""
+        try:
+            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
+            self._conn.commit()
+            logger.info("Migration: added %s.%s.", table, column)
+        except sqlite3.OperationalError as exc:
+            msg = str(exc).lower()
+            if "duplicate column" not in msg and "already exists" not in msg:
+                logger.error("Migration failed unexpectedly: %s", exc)
+                raise
+
     def _create_schema(self) -> None:
         with self._lock:
             self._conn.executescript(_DDL)
-            # Migration: add image_b64 to existing DB that predates this column
-            try:
-                self._conn.execute("ALTER TABLE inspections ADD COLUMN image_b64 TEXT")
-                self._conn.commit()
-                logger.info("Migration: added image_b64 column to inspections.")
-            except sqlite3.OperationalError as e:
-                if "duplicate column" not in str(e).lower() and "already exists" not in str(e).lower():
-                    logger.error(f"Migration failed unexpectedly: {e}")
-                    raise
-            # Migration: add expected_total to batches
-            try:
-                self._conn.execute("ALTER TABLE batches ADD COLUMN expected_total INTEGER NOT NULL DEFAULT 0")
-                self._conn.commit()
-                logger.info("Migration: added expected_total column to batches.")
-            except sqlite3.OperationalError as e:
-                if "duplicate column" not in str(e).lower() and "already exists" not in str(e).lower():
-                    logger.error(f"Migration failed unexpectedly: {e}")
-                    raise
-            # Migration: add expected_size to batches (size class for this batch: S/M/L)
-            try:
-                self._conn.execute("ALTER TABLE batches ADD COLUMN expected_size TEXT NOT NULL DEFAULT ''")
-                self._conn.commit()
-                logger.info("Migration: added expected_size column to batches.")
-            except sqlite3.OperationalError as e:
-                if "duplicate column" not in str(e).lower() and "already exists" not in str(e).lower():
-                    logger.error(f"Migration failed unexpectedly: {e}")
-                    raise
-            # Migration: add detected_size to inspections (per-piece classified size)
-            try:
-                self._conn.execute("ALTER TABLE inspections ADD COLUMN detected_size TEXT NOT NULL DEFAULT ''")
-                self._conn.commit()
-                logger.info("Migration: added detected_size column to inspections.")
-            except sqlite3.OperationalError as e:
-                if "duplicate column" not in str(e).lower() and "already exists" not in str(e).lower():
-                    logger.error(f"Migration failed unexpectedly: {e}")
-                    raise
+            self._add_column_if_missing("inspections", "image_b64",     "TEXT")
+            self._add_column_if_missing("batches",     "expected_total", "INTEGER NOT NULL DEFAULT 0")
+            self._add_column_if_missing("batches",     "expected_size",  "TEXT NOT NULL DEFAULT ''")
+            self._add_column_if_missing("inspections", "detected_size",  "TEXT NOT NULL DEFAULT ''")
 
     # ── Batch operations ───────────────────────────────────────────────────
 
@@ -230,7 +213,7 @@ class DatabaseManager:
                 (batch_id, limit),
             ).fetchall()
         return [
-            {**dict(row), "detections": json.loads(row["detections"])}
+            {**dict(row), "detections": self._safe_json_loads(row["detections"])}
             for row in rows
         ]
 
@@ -247,9 +230,17 @@ class DatabaseManager:
                 """
             ).fetchall()
         return [
-            {**dict(row), "detections": json.loads(row["detections"])}
+            {**dict(row), "detections": self._safe_json_loads(row["detections"])}
             for row in rows
         ]
+
+    @staticmethod
+    def _safe_json_loads(raw: str) -> list:
+        try:
+            return json.loads(raw) if raw else []
+        except json.JSONDecodeError:
+            logger.warning("DB: corrupt detections JSON, returning empty list")
+            return []
 
     def get_all_batches(self) -> list[dict]:
         with self._lock:
@@ -353,11 +344,17 @@ class DatabaseManager:
 
     def cleanup_old_data(self) -> None:
         """
-        เรียกหลัง save_inspection() ทุกครั้ง
+        เรียกหลัง save_inspection() ทุกครั้ง — throttled ด้วย CLEANUP_INTERVAL_S.
+
         Rule 1 — Age  : ลบ record เก่ากว่า MAX_RECORD_AGE_DAYS
         Rule 2 — Size : ถ้า DB > MAX_DB_SIZE_MB → ลบ 40% เก่าสุด เก็บ 60% ใหม่สุด
         Recalculates batch counters only when at least one record was actually deleted.
         """
+        now = time.time()
+        if now - self._last_cleanup_at < CLEANUP_INTERVAL_S:
+            return   # เรียกบ่อย แต่ทำจริงทุก 5 นาทีเท่านั้น
+        self._last_cleanup_at = now
+
         age_deleted  = self._cleanup_by_age()
         size_deleted = self._cleanup_by_size()
         if age_deleted or size_deleted:
@@ -419,16 +416,28 @@ class DatabaseManager:
                 (delete_count,),
             )
             self._conn.commit()
-            self._conn.execute("VACUUM")   # คืน disk space จริง
             logger.info(
                 f"Cleanup [size]: DB was {db_mb:.1f} MB, "
                 f"removed {delete_count} oldest records (kept {CLEANUP_KEEP_RATIO:.0%})."
             )
+        # VACUUM reclaims disk space but blocks the connection — run off the main thread
+        threading.Thread(
+            target=self._vacuum, daemon=True, name="DBVacuum"
+        ).start()
         return True
+
+    def _vacuum(self) -> None:
+        """Run VACUUM in a daemon thread — reclaims disk space without blocking callers."""
+        try:
+            with self._lock:
+                self._conn.execute("VACUUM")
+            logger.info("VACUUM complete.")
+        except sqlite3.Error as exc:
+            logger.warning("VACUUM failed: %s", exc)
 
     def close(self) -> None:
         try:
             self._conn.close()
             logger.info("Database connection closed.")
-        except Exception as exc:
+        except sqlite3.Error as exc:
             logger.warning(f"Error closing DB: {exc}")

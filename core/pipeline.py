@@ -30,14 +30,18 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
 import threading
 import time
-from datetime import datetime, timezone
 from typing import Optional
 
 import cv2
 import numpy as np
+from scipy.signal import find_peaks
 from PySide6.QtCore import QThread, Signal
+
+from core.constants import TriggerMode, Verdict, WorkerStatus
+from core.utils import utcnow_iso
 
 logger = logging.getLogger(__name__)
 
@@ -165,16 +169,12 @@ class PipeInspector:
     # ── Private CV stages (1-to-1 with notebook cells) ────────────────────
 
     def _find_pipe_circle(self, frame_bgr: np.ndarray) -> Optional[tuple]:
-        gray  = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        blur  = cv2.medianBlur(gray, 11)
-        adaptive = cv2.adaptiveThreshold(
-            blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV, 201, 10,
-        )
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        blur = cv2.medianBlur(gray, 11)
         circles = cv2.HoughCircles(
-            adaptive, cv2.HOUGH_GRADIENT,
-            dp=1, minDist=100, param1=50, param2=30,
-            minRadius=50, maxRadius=300,
+            blur, cv2.HOUGH_GRADIENT,
+            dp=1, minDist=1000, param1=50, param2=30,
+            minRadius=90, maxRadius=180,
         )
         if circles is None:
             return None
@@ -182,34 +182,42 @@ class PipeInspector:
         return int(cx), int(cy), int(r)
 
     def _extract_roi(self, frame_bgr: np.ndarray, cx: int, cy: int, radius: int):
-        gray         = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        pipe_mask = np.zeros_like(gray)
-        cv2.circle(pipe_mask, (cx, cy), radius, 255, -1)
-        pipe_gray = cv2.bitwise_and(gray, pipe_mask)
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        blur = cv2.medianBlur(gray, 11)
 
-        blur_inner = cv2.GaussianBlur(pipe_gray, (31, 31), 0)
-        adaptive_inner = cv2.adaptiveThreshold(
-            blur_inner, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV, 201, 10,
-        )
-        inner_circles = cv2.HoughCircles(
-            adaptive_inner, cv2.HOUGH_GRADIENT,
-            dp=1, minDist=100, param1=50, param2=30,
-            minRadius=20, maxRadius=0,
-        )
+        # จำกัดพื้นที่ค้นหาไว้ที่ 80% ของวงนอก
+        r_shrink = int(radius * 0.80)
+        mask_outer = np.zeros_like(blur)
+        cv2.circle(mask_outer, (cx, cy), r_shrink, 255, -1)
+        roi = cv2.bitwise_and(blur, mask_outer)
 
-        if inner_circles is not None:
-            inner_circles = np.uint16(np.around(inner_circles))
-            ix, iy, ir = min(inner_circles[0], key=lambda c: c[2])
-            inner_radius = int(ir * self.inner_radius_ratio)
-            center = (int(ix), int(iy))
+        # Radial intensity profile เพื่อหา r_inner จาก gradient
+        angles = np.linspace(0, 2 * np.pi, 360)
+        intensity_profile = []
+        for r_val in range(r_shrink):
+            vals = [
+                roi[int(cy + r_val * np.sin(a)), int(cx + r_val * np.cos(a))]
+                for a in angles
+                if (0 <= int(cx + r_val * np.cos(a)) < roi.shape[1] and
+                    0 <= int(cy + r_val * np.sin(a)) < roi.shape[0])
+            ]
+            intensity_profile.append(np.mean(vals) if vals else 0)
+        intensity_profile = np.array(intensity_profile)
+
+        gradient = np.abs(np.gradient(intensity_profile))
+        peaks, _ = find_peaks(gradient, height=np.max(gradient) * 0.2, distance=15)
+        peaks_inside = [p for p in peaks if p < r_shrink]
+
+        if peaks_inside:
+            strong = [p for p in peaks_inside if gradient[p] >= np.max(gradient) * 0.30]
+            r_inner = min(strong) if strong else min(peaks_inside)
+            r_inner = max(r_inner - 8, 10)
         else:
-            inner_radius = int(radius * self.inner_radius_ratio)
-            center = (cx, cy)
+            r_inner = int(radius * self.inner_radius_ratio)
 
         mask = np.zeros_like(gray)
-        cv2.circle(mask, center, inner_radius, 255, thickness=-1)
-        return gray, mask, inner_radius
+        cv2.circle(mask, (cx, cy), r_inner, 255, -1)
+        return gray, mask, r_inner
 
     def _detect_defects(self, gray: np.ndarray, mask: np.ndarray) -> list:
         inside_pipe  = cv2.bitwise_and(gray, mask)
@@ -290,10 +298,10 @@ class CameraWorker(QThread):
         self,
         batch_state,
         db,
-        camera_index:   int   = 0,
-        trigger_mode:   str   = "manual",
-        timer_interval: float = TIMER_INTERVAL,
-        size_classifier=None,    # Optional[SizeClassifier]; None = ข้าม size detect
+        camera_index:   int         = 0,
+        trigger_mode:   TriggerMode = TriggerMode.MANUAL,
+        timer_interval: float       = TIMER_INTERVAL,
+        size_classifier=None,   # Optional[SizeClassifier]; None = skip size detection
     ) -> None:
         super().__init__()
         self._batch_state    = batch_state
@@ -332,12 +340,11 @@ class CameraWorker(QThread):
         if detected == expected:
             return   # match
 
-        # Mismatch — force NG + เพิ่ม detection label
+        # Mismatch — force NG + add size_mismatch detection label
         h, w = frame_shape[:2]
-        if result["verdict"] == "OK":
-            result["verdict"] = "NG"
-            # ใช้ confidence = 1.0 เพราะเชื่อ classifier เต็ม
-            result["confidence"] = 1.0
+        if result["verdict"] == Verdict.OK:
+            result["verdict"]    = Verdict.NG
+            result["confidence"] = 1.0   # classifier decision is certain
         result["detections"].append({
             "label":      "size_mismatch",
             "confidence": 1.0,
@@ -356,65 +363,33 @@ class CameraWorker(QThread):
         self._trigger_event.set()
 
     def inspect_file(self, path: str) -> None:
+        """Inspect a static image file instead of a live camera frame.
+
+        Safe to call from any thread (Qt signals are thread-safe).
+        Used in Upload mode when no camera is needed.
         """
-        Inspect a static image file instead of a camera frame.
-        Safe to call from any thread — Qt signals are thread-safe.
-        Used in Upload mode (no camera required).
-        """
-        import os
-        self.status_changed.emit("processing")
+        self.status_changed.emit(WorkerStatus.PROCESSING)
 
         frame = cv2.imread(path)
         if frame is None:
             self.error_occurred.emit(f"Cannot read image:\n{os.path.basename(path)}")
-            self.status_changed.emit("idle")
+            self.status_changed.emit(WorkerStatus.IDLE)
             return
 
-        logger.info(f"CameraWorker: inspecting file '{os.path.basename(path)}'")
-        try:
-            _t0 = time.perf_counter()
-            result = self._inspector.inspect(frame)
-            inference_ms = (time.perf_counter() - _t0) * 1000
-            logger.info(f"CameraWorker: inference done in {inference_ms:.1f} ms")
-        except Exception as exc:
-            logger.error(f"CameraWorker: file inspection error: {exc}", exc_info=True)
-            self.status_changed.emit("idle")
+        logger.info("CameraWorker: inspecting file '%s'", os.path.basename(path))
+        result = self._run_cv_inference(frame)
+        if result is None:
+            self.status_changed.emit(WorkerStatus.IDLE)
             return
 
-        # Size validation — อาจ force verdict=NG ถ้าขนาดไม่ตรง batch
         self._apply_size_check(result, frame.shape)
-
-        batch_snapshot = self._batch_state.increment(result["verdict"])
-        piece_id       = f"{batch_snapshot['id']}-{batch_snapshot['seq']:04d}"
-        timestamp      = datetime.now(timezone.utc).isoformat()
-
-        self._db.save_inspection(
-            piece_id      = piece_id,
-            batch_id      = batch_snapshot["id"],
-            verdict       = result["verdict"],
-            confidence    = result["confidence"],
-            timestamp     = timestamp,
-            detections    = result["detections"],
-            image_b64     = result.get("image_b64", "") if self._should_save_image(result["verdict"], batch_snapshot["id"]) else "",
-            detected_size = result.get("detected_size", ""),
-        )
-        self._db.cleanup_old_data()
-
-        payload = {
-            **result,
-            "piece_id":     piece_id,
-            "timestamp":    timestamp,
-            "batch":        batch_snapshot,
-            "inference_ms": inference_ms,
-        }
-
+        payload = self._persist_result(result)
         logger.info(
-            f"CameraWorker: file done | "
-            f"verdict={result['verdict']} | "
-            f"detections={len(result['detections'])}"
+            "CameraWorker: file done | verdict=%s | detections=%d",
+            result["verdict"], len(result["detections"]),
         )
         self.result_ready.emit(payload)
-        self.status_changed.emit("idle")
+        self.status_changed.emit(WorkerStatus.IDLE)
 
     def stop(self) -> None:
         """Signal the worker to stop. Call before closing the window."""
@@ -464,11 +439,10 @@ class CameraWorker(QThread):
         emit_thread.start()
         logger.info("CameraWorker: frame reader + emitter threads started.")
 
-        # GPIO setup if requested
-        if self._trigger_mode == "gpio":
+        if self._trigger_mode is TriggerMode.GPIO:
             self._setup_gpio()
 
-        self.status_changed.emit("idle")
+        self.status_changed.emit(WorkerStatus.IDLE)
 
         try:
             while not self._stop_event.is_set():
@@ -512,7 +486,8 @@ class CameraWorker(QThread):
                     )
                     self.camera_health_changed.emit(False)
                     is_offline = True
-                time.sleep(READ_FAIL_COOLDOWN)   # กัน tight-spin 100% CPU
+                # wait() returns True when stop is signalled → exits faster than sleep()
+                self._stop_event.wait(timeout=READ_FAIL_COOLDOWN)
 
     def _emit_frames_loop(self) -> None:
         """
@@ -520,18 +495,18 @@ class CameraWorker(QThread):
         ส่งที่ ~STREAM_FPS fps — ป้องกัน UI ล้นด้วย frame ที่มากเกินไป
         """
         interval = 1.0 / STREAM_FPS
-        while not self._stop_event.is_set():
+        # wait() returns False on timeout → emit frame; True on stop signal → exit
+        while not self._stop_event.wait(timeout=interval):
             frame = self._frame_buffer.get_frame()
             if frame is not None:
                 self.frame_ready.emit(frame)
-            time.sleep(interval)
 
     # ── Trigger mechanisms ─────────────────────────────────────────────────
 
     def _wait_for_trigger(self) -> None:
-        if self._trigger_mode == "timer":
+        if self._trigger_mode is TriggerMode.TIMER:
             self._stop_event.wait(timeout=self._timer_interval)
-        elif self._trigger_mode in ("gpio", "manual"):
+        elif self._trigger_mode in (TriggerMode.GPIO, TriggerMode.MANUAL):
             self._trigger_event.wait()
             self._trigger_event.clear()
         else:
@@ -561,46 +536,49 @@ class CameraWorker(QThread):
         logger.info(f"OK sampled at #{ok_count} (ok={saved_ok+1} ng={saved_ng})")
         return True
 
-    # ── Inspection cycle ───────────────────────────────────────────────────
+    # ── Inspection cycle (broken into three focused methods) ─────────────────
 
-    def _run_inspection_cycle(self) -> None:
+    def _capture_frame(self) -> Optional[np.ndarray]:
+        """Wait for pipe to settle then grab the latest frame.
+
+        Returns None if the buffer is empty or stop was requested during the delay.
         """
-        Full stop-and-go cycle:
-          t=0.0s  Trigger received → status: scanning
-          t=0.3s  Capture frame from FrameBuffer
-          t=0.3–0.8s  CV inference
-          t≈0.8s  Emit result_ready → status: idle
+        self.status_changed.emit(WorkerStatus.SCANNING)
+        # Event.wait() returns True when stop is signalled — exit early
+        if self._stop_event.wait(timeout=CAPTURE_DELAY):
+            return None
+
+        frame = self._frame_buffer.get_frame()
+        if frame is None:
+            logger.warning("CameraWorker: no frame in buffer — skipping cycle.")
+        else:
+            logger.info("CameraWorker: frame captured %dx%d", frame.shape[1], frame.shape[0])
+        return frame
+
+    def _run_cv_inference(self, frame: np.ndarray) -> Optional[dict]:
+        """Run the CV pipeline on *frame*.
+
+        Returns the result dict, or None on error (status is NOT reset here —
+        caller is responsible for emitting IDLE on failure).
         """
-        self.status_changed.emit("scanning")
-        time.sleep(CAPTURE_DELAY)
-
-        frame_bgr = self._frame_buffer.get_frame()
-        if frame_bgr is None:
-            logger.warning("CameraWorker: no frame available, skipping cycle.")
-            self.status_changed.emit("idle")
-            return
-
-        logger.info(f"CameraWorker: frame captured {frame_bgr.shape[1]}×{frame_bgr.shape[0]}")
-        self.status_changed.emit("processing")
-
+        self.status_changed.emit(WorkerStatus.PROCESSING)
         try:
-            _t0 = time.perf_counter()
-            result = self._inspector.inspect(frame_bgr)
-            inference_ms = (time.perf_counter() - _t0) * 1000
-            logger.info(f"CameraWorker: inference done in {inference_ms:.1f} ms")
-        except Exception as exc:
-            logger.error(f"CameraWorker: inspection error: {exc}", exc_info=True)
-            self.status_changed.emit("idle")
-            return
+            t0 = time.perf_counter()
+            result = self._inspector.inspect(frame)
+            result["inference_ms"] = (time.perf_counter() - t0) * 1000
+            logger.info("CameraWorker: inference done in %.1f ms", result["inference_ms"])
+            return result
+        except (cv2.error, RuntimeError, ValueError) as exc:
+            logger.error("CameraWorker: CV inference error: %s", exc, exc_info=True)
+            return None
 
-        # Size validation — อาจ force verdict=NG ถ้าขนาดไม่ตรง batch
-        self._apply_size_check(result, frame_bgr.shape)
-
-        # Increment batch counters + persist to DB
+    def _persist_result(self, result: dict) -> dict:
+        """Increment batch counter, write to DB, return enriched payload dict."""
         batch_snapshot = self._batch_state.increment(result["verdict"])
-        piece_id       = f"{batch_snapshot['id']}-{batch_snapshot['seq']:04d}"
-        timestamp      = datetime.now(timezone.utc).isoformat()
+        piece_id  = f"{batch_snapshot['id']}-{batch_snapshot['seq']:04d}"
+        timestamp = utcnow_iso()
 
+        save_image = self._should_save_image(result["verdict"], batch_snapshot["id"])
         self._db.save_inspection(
             piece_id      = piece_id,
             batch_id      = batch_snapshot["id"],
@@ -608,27 +586,41 @@ class CameraWorker(QThread):
             confidence    = result["confidence"],
             timestamp     = timestamp,
             detections    = result["detections"],
-            image_b64     = result.get("image_b64", "") if self._should_save_image(result["verdict"], batch_snapshot["id"]) else "",
+            image_b64     = result.get("image_b64", "") if save_image else "",
             detected_size = result.get("detected_size", ""),
         )
         self._db.cleanup_old_data()
 
-        payload = {
+        return {
             **result,
-            "piece_id":     piece_id,
-            "timestamp":    timestamp,
-            "batch":        batch_snapshot,
-            "inference_ms": inference_ms,
+            "piece_id":  piece_id,
+            "timestamp": timestamp,
+            "batch":     batch_snapshot,
         }
 
-        logger.info(
-            f"CameraWorker: submitted | "
-            f"verdict={result['verdict']} | "
-            f"detections={len(result['detections'])}"
-        )
+    def _run_inspection_cycle(self) -> None:
+        """Orchestrate one full stop-and-go inspection cycle.
 
+        Timeline: trigger → settle (0.3 s) → capture → inference → persist → emit
+        """
+        frame = self._capture_frame()
+        if frame is None:
+            self.status_changed.emit(WorkerStatus.IDLE)
+            return
+
+        result = self._run_cv_inference(frame)
+        if result is None:
+            self.status_changed.emit(WorkerStatus.IDLE)
+            return
+
+        self._apply_size_check(result, frame.shape)
+        payload = self._persist_result(result)
+        logger.info(
+            "CameraWorker: submitted | verdict=%s | detections=%d",
+            result["verdict"], len(result["detections"]),
+        )
         self.result_ready.emit(payload)
-        self.status_changed.emit("idle")
+        self.status_changed.emit(WorkerStatus.IDLE)
 
     # ── GPIO (Jetson production trigger) ──────────────────────────────────
 
@@ -642,7 +634,7 @@ class CameraWorker(QThread):
             logger.info("CameraWorker: GPIO trigger configured on BCM pin 18.")
         except ImportError:
             logger.error("Jetson.GPIO not found — falling back to manual trigger.")
-            self._trigger_mode = "manual"
+            self._trigger_mode = TriggerMode.MANUAL
 
     def _gpio_callback(self, channel: int) -> None:
         logger.info(f"CameraWorker: GPIO rising edge on pin {channel}.")
@@ -654,6 +646,6 @@ class CameraWorker(QThread):
         if self._cap is not None:
             self._cap.release()
             logger.info("CameraWorker: camera released.")
-        if self._trigger_mode == "gpio" and hasattr(self, "_gpio"):
+        if self._trigger_mode is TriggerMode.GPIO and hasattr(self, "_gpio"):
             self._gpio.cleanup()
             logger.info("CameraWorker: GPIO cleaned up.")

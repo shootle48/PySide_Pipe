@@ -13,6 +13,7 @@ logs
 exports/
 data/
 Dataset_pipe
+tests/
 # Claude Code (local dev tools — don't share)
 .claude/
 DEPLOYMENT.md

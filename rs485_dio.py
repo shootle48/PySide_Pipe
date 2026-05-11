@@ -26,11 +26,14 @@ Example:
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Callable, Iterable, List, Optional, Sequence, Union
 
 import minimalmodbus
 import serial
+
+logger = logging.getLogger(__name__)
 
 
 BitValue = Union[int, bool]
@@ -73,7 +76,11 @@ class RS485DIO:
         self.baudrate = baudrate
         self.slave_id = slave_id
 
-        self.instrument = minimalmodbus.Instrument(port, slave_id)
+        try:
+            self.instrument = minimalmodbus.Instrument(port, slave_id)
+        except (serial.SerialException, FileNotFoundError, OSError) as exc:
+            raise RuntimeError(f"Cannot open RS485 port {port!r}: {exc}") from exc
+
         self.instrument.serial.baudrate = baudrate
         self.instrument.serial.bytesize = 8
         self.instrument.serial.parity = serial.PARITY_NONE
@@ -85,6 +92,22 @@ class RS485DIO:
 
         if clear_outputs_on_start:
             self.reset_outputs()
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def close(self) -> None:
+        """Release the serial port so the OS makes it available again."""
+        try:
+            if self.instrument and self.instrument.serial and self.instrument.serial.is_open:
+                self.instrument.serial.close()
+                logger.info("RS485DIO: port %r closed.", self.port)
+        except (serial.SerialException, OSError) as exc:
+            logger.warning("RS485DIO: error closing port %r: %s", self.port, exc)
+
+    def __del__(self) -> None:
+        self.close()
 
     # ------------------------------------------------------------------
     # Validation helpers

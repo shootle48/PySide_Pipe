@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime, timezone
 from typing import Optional
 
 from PySide6.QtCore    import QLocale, Qt, QSettings, QTimer, Slot
@@ -43,10 +42,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from core.batch_state    import BatchStateManager
-from core.database       import DatabaseManager
-from core.pipeline       import CameraWorker
+from core.batch_state     import BatchStateManager
+from core.constants       import MONO_FONT, STATUS_COLORS, TriggerMode, VERDICT_COLORS
+from core.database        import DatabaseManager
+from core.pipeline        import CameraWorker
 from core.size_classifier import SizeClassifier
+from core.utils           import iso_to_local_str
 from ui.frame_widget          import FrameWidget
 from ui.db_viewer             import DbViewerDialog
 from ui.camera_select_dialog  import CameraSelectDialog
@@ -60,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 # ── Config ─────────────────────────────────────────────────────────────────
 CAMERA_INDEX     = 2
-TRIGGER_MODE     = "manual"    # "manual" | "timer" | "gpio"
+TRIGGER_MODE     = TriggerMode.MANUAL
 TIMER_INTERVAL   = 6.0
 RESULT_VIEW_SECS = 4           # seconds to show result before returning to live
 
@@ -70,15 +71,6 @@ RESULT_VIEW_SECS = 4           # seconds to show result before returning to live
 #   "real" — ใช้ RS485DIO จริง (Jetson + USB-to-RS485 dongle)
 RS485_MODE       = "off"
 RS485_WATCH_BITS = [0]         # inputs ที่ watch (I0 = trigger sensor default)
-
-# ── Status colours (industrial HMI palette — high contrast for factory) ──
-_STATUS_COLORS = {
-    "idle":       "#52606d",   # medium gray
-    "scanning":   "#0288d1",   # deep cyan/blue
-    "processing": "#ef6c00",   # dark orange
-    "connected":  "#2e7d32",   # dark green (WCAG AA on white)
-    "error":      "#c62828",   # dark red
-}
 
 
 class MainWindow(QMainWindow):
@@ -169,7 +161,7 @@ class MainWindow(QMainWindow):
                 return
             try:
                 self._io_source = RS485DIO()
-            except Exception as exc:
+            except (OSError, TypeError, ValueError) as exc:
                 logger.error(f"RS485: init failed ({exc}). Running without RS485 input.")
                 return
             logger.info("RS485: real hardware mode OK.")
@@ -273,7 +265,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._inference_label)
 
         cam_btn = QPushButton("Camera")
-        cam_btn.setObjectName("dbBtn")   # ใช้ style เดียวกับ DB button
+        cam_btn.setObjectName("cameraBtn")
         cam_btn.setFixedHeight(44)
         cam_btn.setMinimumWidth(110)
         cam_btn.setToolTip("เลือก/เปลี่ยนกล้องที่ใช้")
@@ -533,52 +525,44 @@ class MainWindow(QMainWindow):
         # Always forward to maintenance tab (drift monitor runs in background)
         self._maintenance.on_frame(frame_bgr)
 
-    @Slot(dict)
-    def _on_result(self, result: dict) -> None:
-        """
-        Inspection result arrived.
-          1. Switch frame widget to result view (bbox overlay).
-          2. Update counters, last result card, history list.
-          3. Flash the verdict colour on the capture button border briefly.
-          4. Schedule return to live view after RESULT_VIEW_SECS.
-        """
-        self._in_result_view = True
-        self._live_badge.setVisible(False)
-        self._frame_widget.set_result_frame(result["image_b64"], result["detections"])
+    # ── Result display helpers ─────────────────────────────────────────────
 
-        # Update inference time indicator (สีแดงถ้าช้าผิดปกติ >500ms)
-        ms = result.get("inference_ms")
-        if ms is not None:
-            color = "#c62828" if ms > 500 else ("#ef6c00" if ms > 250 else "#52606d")
-            self._inference_label.setText(f"{ms:.0f} ms")
-            self._inference_label.setStyleSheet(f"color: {color};")
+    def _update_inference_label(self, ms: Optional[float]) -> None:
+        """Colour-coded inference time indicator (green → orange → red)."""
+        if ms is None:
+            return
+        color = "#c62828" if ms > 500 else ("#ef6c00" if ms > 250 else "#52606d")
+        self._inference_label.setText(f"{ms:.0f} ms")
+        self._inference_label.setStyleSheet(f"color: {color};")
 
-        # Update batch counters
-        self._update_counters(result["batch"])
-
-
-        # Prepend to history
-        self._prepend_history_row(result)
-
-        # Flash capture button
-        verdict = result["verdict"]
-        flash_color = "#2e7d32" if verdict == "OK" else "#c62828"
+    def _flash_verdict(self, verdict: str) -> None:
+        """Flash capture-button border with verdict colour + NG frame alert."""
+        flash_color = VERDICT_COLORS.get(verdict, "#52606d")
         self._capture_btn.setStyleSheet(
             f"#captureBtn {{ border: 3px solid {flash_color}; }}"
         )
         QTimer.singleShot(600, lambda: self._capture_btn.setStyleSheet(""))
-
-        # Visual NG alert — flash red border around frame for 500ms
         if verdict == "NG":
             self._flash_ng_alert()
 
-        # Re-enable active button
+    @Slot(dict)
+    def _on_result(self, result: dict) -> None:
+        """Inspection result arrived — update frame, counters, history, then
+        re-enable buttons and schedule return to live view."""
+        self._in_result_view = True
+        self._live_badge.setVisible(False)
+        self._frame_widget.set_result_frame(result["image_b64"], result["detections"])
+
+        self._update_inference_label(result.get("inference_ms"))
+        self._update_counters(result["batch"])
+        self._prepend_history_row(result)
+        self._flash_verdict(result["verdict"])
+
         self._capture_btn.setEnabled(True)
         self._capture_btn.setText("CAPTURE & INSPECT")
         self._upload_btn.setEnabled(True)
         self._upload_btn.setText("UPLOAD & INSPECT")
 
-        # Return to live view after delay
         self._result_timer.start(RESULT_VIEW_SECS * 1000)
 
     @Slot(str)
@@ -589,7 +573,7 @@ class MainWindow(QMainWindow):
             "scanning":   "Scanning…",
             "processing": "Processing…",
         }
-        color = _STATUS_COLORS.get(state, "#52606d")
+        color = STATUS_COLORS.get(state, "#52606d")
         self._status_dot.setStyleSheet(f"color: {color}; font-size: 18px;")
         self._status_text.setText(labels.get(state, state.title()))
 
@@ -607,11 +591,11 @@ class MainWindow(QMainWindow):
         if self._upload_mode and "camera" in message.lower():
             # กล้องเปิดไม่ได้ — ปกติใน Upload mode ไม่ต้องแจ้งเตือน
             logger.warning(f"Camera unavailable (Upload mode): {message}")
-            self._status_dot.setStyleSheet(f"color: {_STATUS_COLORS['idle']}; font-size: 14px;")
+            self._status_dot.setStyleSheet(f"color: {STATUS_COLORS['idle']}; font-size: 14px;")
             self._status_text.setText("Upload Mode")
             return
         QMessageBox.critical(self, "Error", message)
-        self._status_dot.setStyleSheet(f"color: {_STATUS_COLORS['error']}; font-size: 18px;")
+        self._status_dot.setStyleSheet(f"color: {STATUS_COLORS['error']}; font-size: 18px;")
         self._status_text.setText("Error")
         self._capture_btn.setEnabled(False)
         self._upload_btn.setEnabled(True)
@@ -632,14 +616,14 @@ class MainWindow(QMainWindow):
 
         if online:
             self._status_dot.setStyleSheet(
-                f"color: {_STATUS_COLORS['connected']}; font-size: 18px;"
+                f"color: {STATUS_COLORS['connected']}; font-size: 18px;"
             )
             self._status_text.setText("Camera online")
             self._capture_btn.setEnabled(True)
             logger.info("UI: camera back online")
         else:
             self._status_dot.setStyleSheet(
-                f"color: {_STATUS_COLORS['error']}; font-size: 18px;"
+                f"color: {STATUS_COLORS['error']}; font-size: 18px;"
             )
             self._status_text.setText("Camera offline")
             self._capture_btn.setEnabled(False)
@@ -673,6 +657,45 @@ class MainWindow(QMainWindow):
             lambda: self._view_container.setStyleSheet("")
         )
 
+    # ── Counter helpers ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _calc_quality_rate_str(total: int, ng: int) -> str:
+        """OEE Quality Rate = (total - ng) / total × 100.  Returns '—' when total=0."""
+        if total <= 0:
+            return "—"
+        return f"{(total - ng) / total * 100:.1f} %"
+
+    def _update_progress_bar(self, expected: int, total: int) -> None:
+        """Refresh progress bar value, colour, and missing-pieces label."""
+        self._progress_bar.setVisible(True)
+        self._progress_bar.setMaximum(expected)
+        self._progress_bar.setValue(min(total, expected))
+
+        diff = expected - total
+        if diff > 0:
+            bar_color = "#1565c0"   # ฟ้า — ยังไม่ครบ
+            self._missing_label.setText(f"ขาดอีก {diff} ชิ้น")
+            self._missing_label.setStyleSheet("color:#ef6c00; font-weight:bold;")
+        elif diff < 0:
+            bar_color = "#c62828"   # แดง — เกินเป้า
+            self._missing_label.setText(f"เกิน {abs(diff)} ชิ้น")
+            self._missing_label.setStyleSheet("color:#c62828; font-weight:bold;")
+        else:
+            bar_color = "#2e7d32"   # เขียว — ครบพอดี
+            self._missing_label.setText("ครบตามเป้า")
+            self._missing_label.setStyleSheet("color:#2e7d32; font-weight:bold;")
+
+        self._progress_bar.setStyleSheet(
+            "QProgressBar#batchProgress {"
+            "  background:#f1f3f6; border:1px solid #cbd1d9;"
+            "  border-radius:6px; color:#1a1d23;"
+            "  font-family:'Segoe UI',sans-serif; font-size:13px;"
+            "  font-weight:bold; text-align:center;"
+            "}"
+            f"QProgressBar#batchProgress::chunk {{ background:{bar_color}; border-radius:5px; }}"
+        )
+
     def _update_counters(self, batch: dict) -> None:
         """Refresh TOTAL / NG / Quality Rate / Target / Size from a batch snapshot dict."""
         total    = batch.get("total", 0)
@@ -682,51 +705,12 @@ class MainWindow(QMainWindow):
 
         self._counter_total[1].setText(str(total))
         self._counter_ng[1].setText(str(ng))
+        self._ng_rate_label.setText(self._calc_quality_rate_str(total, ng))
+        self._size_label.setText(exp_size or "—")
 
-        # Size display — "—" ถ้ายังไม่ล็อค (legacy batch ก่อน feature นี้)
-        self._size_label.setText(exp_size if exp_size else "—")
-
-        # OEE Quality Rate = Good / Total × 100   (ตามนิยาม OEE มาตรฐาน)
-        # ถ้า NG = 0 → 100%   ถ้า NG = total → 0%
-        if total > 0:
-            quality_rate = (total - ng) / total * 100
-            self._ng_rate_label.setText(f"{quality_rate:.1f} %")
-        else:
-            self._ng_rate_label.setText("—")
-
-        # Expected vs actual
         if expected > 0:
             self._expected_label.setText(str(expected))
-            diff = expected - total
-
-            # Progress bar — show & colour by state
-            self._progress_bar.setVisible(True)
-            # Cap maximum ไว้ที่ expected แต่ถ้า total เกิน → fill เต็ม + ใช้สีแดง
-            self._progress_bar.setMaximum(expected)
-            self._progress_bar.setValue(min(total, expected))
-
-            if diff > 0:
-                bar_color = "#1565c0"   # ฟ้า — ยังไม่ครบ
-                self._missing_label.setText(f"ขาดอีก {diff} ชิ้น")
-                self._missing_label.setStyleSheet("color:#ef6c00; font-weight:bold;")
-            elif diff < 0:
-                bar_color = "#c62828"   # แดง — เกินเป้า
-                self._missing_label.setText(f"เกิน {abs(diff)} ชิ้น")
-                self._missing_label.setStyleSheet("color:#c62828; font-weight:bold;")
-            else:
-                bar_color = "#2e7d32"   # เขียว — ครบพอดี
-                self._missing_label.setText("ครบตามเป้า")
-                self._missing_label.setStyleSheet("color:#2e7d32; font-weight:bold;")
-
-            self._progress_bar.setStyleSheet(
-                "QProgressBar#batchProgress {"
-                "  background:#f1f3f6; border:1px solid #cbd1d9;"
-                "  border-radius:6px; color:#1a1d23;"
-                "  font-family:'Segoe UI',sans-serif; font-size:13px;"
-                "  font-weight:bold; text-align:center;"
-                "}"
-                f"QProgressBar#batchProgress::chunk {{ background:{bar_color}; border-radius:5px; }}"
-            )
+            self._update_progress_bar(expected, total)
         else:
             self._expected_label.setText("—")
             self._missing_label.setText("")
@@ -734,34 +718,38 @@ class MainWindow(QMainWindow):
 
         self._batch_id_label.setText(batch.get("id", "—"))
 
-    def _prepend_history_row(self, result: dict) -> None:
-        """Add one row at the top of the history list."""
-        verdict  = result["verdict"]
-        piece_id = result.get("piece_id", "—")
-        confs    = result.get("detections", [])
+    # ── History helpers ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _format_history_item(result: dict) -> tuple[str, str, str]:
+        """Pure helper: build (display_text, fg_hex, bg_hex) from a result dict.
+
+        No widget interaction — safe to unit-test without a QApplication.
+        """
+        verdict   = result["verdict"]
+        piece_id  = result.get("piece_id", "—")
+        confs     = result.get("detections", [])
         timestamp = result.get("timestamp", "")
-        det_size = result.get("detected_size", "") or ""
+        det_size  = result.get("detected_size", "") or ""
 
-        try:
-            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            time_str = dt.astimezone().strftime("%H:%M:%S")
-        except Exception:
-            time_str = "—"
-
-        detail = confs[0]["label"].replace("_", " ") if confs else "No defect"
-        tag    = "[OK]" if verdict == "OK" else "[NG]"
-        # Size code 1 ตัว (S/M/L/?/-) ใส่ระหว่าง piece_id กับ detail
+        time_str  = iso_to_local_str(timestamp) if timestamp else "—"
+        detail    = confs[0]["label"].replace("_", " ") if confs else "No defect"
+        tag       = "[OK]" if verdict == "OK" else "[NG]"
         size_code = (det_size[0] if det_size and det_size != "unknown" else "?") if det_size else "-"
-        text   = f"  {tag}  {piece_id:<20}  {size_code}  {detail:<18}  {time_str}"
+        text      = f"  {tag}  {piece_id:<20}  {size_code}  {detail:<18}  {time_str}"
+
+        fg = VERDICT_COLORS.get(verdict, "#1a1d23")
+        bg = "#e8f5e9" if verdict == "OK" else "#ffebee"
+        return text, fg, bg
+
+    def _prepend_history_row(self, result: dict) -> None:
+        """Add one formatted row at the top of the history list."""
+        text, fg, bg = self._format_history_item(result)
 
         item = QListWidgetItem(text)
-        item.setFont(QFont("Consolas", 12, QFont.Bold))
-        if verdict == "NG":
-            item.setForeground(QColor("#c62828"))
-            item.setBackground(QColor("#ffebee"))
-        else:
-            item.setForeground(QColor("#2e7d32"))
-            item.setBackground(QColor("#e8f5e9"))
+        item.setFont(QFont(MONO_FONT, 12, QFont.Bold))
+        item.setForeground(QColor(fg))
+        item.setBackground(QColor(bg))
 
         self._history_list.insertItem(0, item)
 
@@ -832,6 +820,17 @@ class MainWindow(QMainWindow):
 
         self._switch_camera(new_idx)
 
+    def _disconnect_worker_signals(self) -> None:
+        """Disconnect signals ของ worker ปัจจุบัน ก่อนทิ้งหรือ stop"""
+        try:
+            self._worker.frame_ready.disconnect()
+            self._worker.result_ready.disconnect()
+            self._worker.status_changed.disconnect()
+            self._worker.error_occurred.disconnect()
+            self._worker.camera_health_changed.disconnect()
+        except RuntimeError:
+            pass  # signals ถูก disconnect ไปแล้ว
+
     def _switch_camera(self, new_idx: int) -> None:
         """
         Stop worker ปัจจุบัน → สร้าง worker ใหม่ด้วย index ใหม่ → start
@@ -846,7 +845,8 @@ class MainWindow(QMainWindow):
         self._live_badge.setVisible(False)
         self._capture_btn.setEnabled(False)
 
-        # Stop worker เก่า
+        # Disconnect signals ก่อน stop เพื่อไม่ให้ old worker ส่ง event หลัง switch
+        self._disconnect_worker_signals()
         self._worker.stop()
         self._worker.wait(3000)
 
@@ -913,14 +913,17 @@ class MainWindow(QMainWindow):
         self._upload_btn.setEnabled(False)
         self._upload_btn.setText("PROCESSING…")
 
-        def _run():
+        # inspect_file emits result_ready signal which Qt routes to main thread;
+        # run in a daemon thread so the UI stays responsive during file I/O + inference.
+        def _run() -> None:
             try:
                 self._worker.inspect_file(path)
+            except (OSError, ValueError, RuntimeError) as exc:
+                logger.error("inspect_file error: %s", exc, exc_info=True)
             finally:
                 self._file_inspecting = False
 
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
+        threading.Thread(target=_run, daemon=True, name="FileInspect").start()
 
     def _reset_batch(self) -> None:
         """Reset batch counters and return to live view.
@@ -997,13 +1000,22 @@ class MainWindow(QMainWindow):
         """Clean shutdown: stop worker thread + close DB connection."""
         logger.info("MainWindow: closing — stopping worker...")
         self._result_timer.stop()
+
+        # Disconnect signals first to prevent stale events during shutdown
+        self._disconnect_worker_signals()
+
         self._worker.stop()
-        self._worker.wait(3000)   # wait up to 3 s for clean exit
+        if not self._worker.wait(3000):
+            logger.error("CameraWorker did not stop cleanly — forcing terminate")
+            self._worker.terminate()
+            self._worker.wait(1000)
+
         if self._io_worker is not None:
             self._io_worker.stop()
             self._io_worker.wait(2000)
         if self._io_source is not None and hasattr(self._io_source, "stop"):
             self._io_source.stop()   # MockRS485DIO has its own pulse thread
+
         self._db.close()
         logger.info("MainWindow: shutdown complete.")
         event.accept()
@@ -1126,7 +1138,7 @@ class MainWindow(QMainWindow):
                 padding: 5px 10px;
                 min-width: 70px;
             }
-            #dbBtn {
+            #cameraBtn, #dbBtn {
                 background: #ffffff;
                 color: #1a1d23;
                 border: 2px solid #a8b0ba;
@@ -1135,12 +1147,12 @@ class MainWindow(QMainWindow):
                 font-weight: bold;
                 padding: 6px 14px;
             }
-            #dbBtn:hover {
+            #cameraBtn:hover, #dbBtn:hover {
                 background: #e3f2fd;
                 border-color: #1565c0;
                 color: #0d47a1;
             }
-            #dbBtn:pressed {
+            #cameraBtn:pressed, #dbBtn:pressed {
                 background: #bbdefb;
             }
 

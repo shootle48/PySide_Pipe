@@ -16,15 +16,27 @@ import logging
 from typing import Optional
 
 import cv2
-from PySide6.QtCore    import Qt
+from PySide6.QtCore    import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QHBoxLayout, QLabel, QListWidget,
+    QDialog, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout,
 )
 
 logger = logging.getLogger(__name__)
 
 MAX_SCAN_INDEX = 6   # สแกน index 0..5 (ส่วนใหญ่กล้อง USB ไม่เกินนี้)
+
+
+class _ScanWorker(QThread):
+    """รัน scan_cameras() บน background thread แล้วส่งผลกลับผ่าน signal."""
+    found = Signal(list)  # list[dict]
+
+    def __init__(self, skip: set) -> None:
+        super().__init__()
+        self._skip = skip
+
+    def run(self) -> None:
+        self.found.emit(scan_cameras(skip=self._skip))
 
 
 def scan_cameras(skip: Optional[set] = None) -> list[dict]:
@@ -60,6 +72,7 @@ class CameraSelectDialog(QDialog):
         self.setMinimumWidth(400)
         self._current_index  = current_index
         self._selected_index: Optional[int] = None
+        self._scan_worker: Optional[_ScanWorker] = None
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -142,15 +155,21 @@ class CameraSelectDialog(QDialog):
         self._refresh()
 
     def _refresh(self) -> None:
-        """Re-scan กล้องทั้งหมด (ยกเว้น current ที่ worker ใช้อยู่)"""
+        """Re-scan กล้องทั้งหมด (background thread — UI ไม่ freeze)"""
+        if self._scan_worker and self._scan_worker.isRunning():
+            return  # scan กำลังทำงานอยู่แล้ว
+
         self._list.clear()
         self._info_label.setText("กำลังสแกน…")
         self._refresh_btn.setEnabled(False)
-        QApplication.processEvents()
+        self._ok_btn.setEnabled(False)
 
-        # Skip current เพื่อไม่ให้ conflict กับ worker ที่กำลังเปิดอยู่
-        cams = scan_cameras(skip={self._current_index})
+        self._scan_worker = _ScanWorker(skip={self._current_index})
+        self._scan_worker.found.connect(self._on_scan_done)
+        self._scan_worker.start()
 
+    def _on_scan_done(self, cams: list) -> None:
+        """รับผลจาก background scan — เรียกบน main thread ผ่าน signal"""
         # เพิ่ม current เข้า list (แสดงเป็น active)
         current_item = QListWidgetItem(
             f"  ● Camera {self._current_index}  —  active (currently in use)"
@@ -173,6 +192,7 @@ class CameraSelectDialog(QDialog):
         total = len(cams) + 1
         self._info_label.setText(f"พบ {total} กล้อง — ดับเบิลคลิกหรือกด Select")
         self._refresh_btn.setEnabled(True)
+        self._ok_btn.setEnabled(True)
 
     def _on_select(self) -> None:
         item = self._list.currentItem()

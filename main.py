@@ -21,7 +21,7 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ui.main_window import MainWindow
 
@@ -100,9 +100,18 @@ def main() -> None:
     app.setApplicationName("Pipe Inspector")
     app.setOrganizationName("Research")
 
-    window = MainWindow()
-    window.show()
+    try:
+        window = MainWindow()
+    except (RuntimeError, ImportError, OSError, ValueError) as exc:
+        logger.critical("Startup failed: %s", exc, exc_info=True)
+        QMessageBox.critical(
+            None,
+            "Startup Error",
+            f"ไม่สามารถเริ่มต้นโปรแกรมได้:\n\n{exc}\n\nดู logs/app.log สำหรับรายละเอียด",
+        )
+        sys.exit(1)
 
+    window.show()
     logger.info("Pipe Inspector (PySide6) started.")
     sys.exit(app.exec())
 

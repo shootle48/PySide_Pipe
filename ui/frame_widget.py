@@ -12,6 +12,7 @@ Two display modes (toggled by MainWindow):
 from __future__ import annotations
 
 import base64
+import binascii
 import logging
 from typing import Optional
 
@@ -79,10 +80,11 @@ class FrameWidget(QWidget):
         Called ~20 fps by the live emitter thread (via Signal).
         No detections are drawn in live mode.
         """
+        frame_bgr = frame_bgr.copy()  # detach from worker's reused buffer before any processing
         h, w, ch = frame_bgr.shape
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         qimage = QImage(frame_rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        self._pixmap      = QPixmap.fromImage(qimage.copy())  # .copy() — frame buffer may be reused
+        self._pixmap      = QPixmap.fromImage(qimage.copy())
         self._detections  = []
         self._is_placeholder = False
         self.update()
@@ -99,7 +101,7 @@ class FrameWidget(QWidget):
             if qimage.isNull():
                 raise ValueError("QImage decode failed")
             self._pixmap = QPixmap.fromImage(qimage)
-        except Exception as exc:
+        except (binascii.Error, ValueError) as exc:
             logger.error(f"FrameWidget: cannot decode result image: {exc}")
             return
         self._detections  = detections

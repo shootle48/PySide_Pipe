@@ -34,6 +34,11 @@ from typing import List, Optional, Protocol, Sequence
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
+try:
+    from minimalmodbus import ModbusException as _ModbusException
+except ImportError:
+    class _ModbusException(OSError): pass  # type: ignore[no-redef]
+
 # ── Two separate loggers — ทำให้แยกฝั่งได้ชัดเจน ────────────────────────────
 smartsense_log = logging.getLogger("smartsense.dio")   # ฝั่ง Smart-Sense library
 app_log        = logging.getLogger("app.rs485_worker") # ฝั่ง app ของผม
@@ -252,7 +257,7 @@ class RS485InputWorker(QThread):
             #       ส่วน retry / health logic เป็นของ app ของผมเอง
             try:
                 values = self._io.read_inputs(self._watch_bits)
-            except Exception as exc:
+            except (OSError, _ModbusException) as exc:
                 smartsense_log.debug(f"read_inputs failed: {exc}")
                 fail_count += 1
                 if fail_count == IO_FAIL_THRESHOLD and not is_offline:
@@ -374,7 +379,7 @@ class RS485OutputWriter(QObject):
             self._io.write_pulse(bit, pulse_time=self._pulse_s)
             app_log.info(f"verdict {verdict} sent to PLC (bit {bit})")
             self.write_complete.emit(verdict, True)
-        except Exception as exc:
+        except (OSError, _ModbusException) as exc:
             smartsense_log.error(
                 f"write_pulse(bit={bit}) FAILED for verdict {verdict}: {exc}"
             )
@@ -414,7 +419,7 @@ class LoggingRS485DIO:
             result = self._dio.read_inputs(input_indices)
             smartsense_log.debug(f"read_inputs({input_indices}) -> {result}")
             return result
-        except Exception as exc:
+        except (OSError, _ModbusException) as exc:
             smartsense_log.error(f"read_inputs({input_indices}) FAILED: {exc}")
             raise
 
@@ -423,7 +428,7 @@ class LoggingRS485DIO:
             result = self._dio.read_input(input_index)
             smartsense_log.debug(f"read_input({input_index}) -> {result}")
             return result
-        except Exception as exc:
+        except (OSError, _ModbusException) as exc:
             smartsense_log.error(f"read_input({input_index}) FAILED: {exc}")
             raise
 
@@ -431,7 +436,7 @@ class LoggingRS485DIO:
         try:
             self._dio.write_output(output_index, value)
             smartsense_log.info(f"write_output(bit={output_index}, value={value})")
-        except Exception as exc:
+        except (OSError, _ModbusException) as exc:
             smartsense_log.error(
                 f"write_output({output_index}, {value}) FAILED: {exc}"
             )
@@ -443,7 +448,7 @@ class LoggingRS485DIO:
             smartsense_log.info(
                 f"write_pulse(bit={output_index}, {pulse_time*1000:.0f}ms)"
             )
-        except Exception as exc:
+        except (OSError, _ModbusException) as exc:
             smartsense_log.error(f"write_pulse({output_index}) FAILED: {exc}")
             raise
 

@@ -58,7 +58,7 @@ def check_serial_port(port: str) -> bool:
         s.close()
         print(f"  ✓ port {port} เปิดได้")
         return True
-    except Exception as exc:
+    except (serial.SerialException, OSError) as exc:
         print(f"  ✗ FAIL: {exc}")
         print(f"    Fix:")
         print(f"      - ตรวจว่า USB-to-RS485 dongle เสียบอยู่")
@@ -71,13 +71,15 @@ def check_dio_read(port: str) -> "tuple[bool, object]":
     """Step 3: ลอง read_inputs จาก DIO module"""
     print("\n[3/4] Testing RS485DIO read_inputs...")
     try:
+        import minimalmodbus
+        import serial
         from rs485_dio import RS485DIO
         dio = RS485DIO(port=port, clear_outputs_on_start=False)
         values = dio.read_inputs()
         print(f"  ✓ read_inputs() → {values}")
         print(f"    (input bit 0-7 ปัจจุบัน — ถ้าไม่มีอะไร trigger ค่าจะเป็น 0 หมด)")
         return True, dio
-    except Exception as exc:
+    except (minimalmodbus.ModbusException, serial.SerialException, OSError) as exc:
         print(f"  ✗ FAIL: {exc}")
         print(f"    Fix:")
         print(f"      - ตรวจสาย RS485 (A+ / B-) ต่อถูกขั้วมั้ย")
@@ -90,6 +92,8 @@ def check_dio_write(dio) -> bool:
     """Step 4: ลอง write_pulse บน bit 0 และ bit 1"""
     print("\n[4/4] Testing RS485DIO write_pulse...")
     try:
+        import minimalmodbus
+        import serial
         print("  → pulse bit 0 (OK signal) for 200ms...")
         dio.write_pulse(0, pulse_time=0.2)
         time.sleep(0.3)
@@ -102,7 +106,7 @@ def check_dio_write(dio) -> bool:
         print(f"  ✓ write_pulse สำเร็จ — output state ปัจจุบัน: {outputs}")
         print(f"    (ถ้ามี LED ต่ออยู่จะเห็นกระพริบ)")
         return True
-    except Exception as exc:
+    except (minimalmodbus.ModbusException, serial.SerialException, OSError) as exc:
         print(f"  ✗ FAIL: {exc}")
         return False
 

@@ -20,6 +20,7 @@ Layout:
 from __future__ import annotations
 
 import base64
+import binascii
 import csv
 import logging
 import re
@@ -34,6 +35,9 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QMessageBox, QPushButton, QSplitter,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QFrame,
 )
+
+from core.constants import MONO_FONT, VERDICT_COLORS
+from core.utils     import iso_to_local_str
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +283,7 @@ class DbViewerDialog(QDialog):
             )
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, b["id"])
-            item.setFont(QFont("Consolas", 12))
+            item.setFont(QFont(MONO_FONT, 12))
             if b["is_active"]:
                 item.setForeground(QColor("#1565c0"))
             self._batch_list.addItem(item)
@@ -287,85 +291,78 @@ class DbViewerDialog(QDialog):
         if self._batch_list.count() > 0:
             self._batch_list.setCurrentRow(0)
 
-    def _load_inspections(self, batch_id: str) -> None:
-        """Load inspections for the selected batch into the table."""
-        self._current_batch = batch_id
-        rows = self._db.get_recent_inspections(batch_id, limit=500)
+    # ── Stats / rate helpers ───────────────────────────────────────────────
 
+    @staticmethod
+    def _batch_ng_rate_str(total: int, ng: int) -> str:
+        """OEE Quality Rate = (total - ng) / total × 100.  Returns '—' when total=0."""
+        if total <= 0:
+            return "—"
+        return f"{(total - ng) / total * 100:.1f}%"
+
+    def _populate_inspection_table(self, rows: list) -> None:
+        """Fill the inspection QTableWidget from a list of row dicts."""
         self._table.setRowCount(0)
-        self._row_images = []   # reset parallel image list
-        total = len(rows)
-        ng    = sum(1 for r in rows if r["verdict"] == "NG")
+        self._row_images = []   # reset parallel image list (index-aligned with rows)
 
         for row_data in rows:
             row_idx = self._table.rowCount()
             self._table.insertRow(row_idx)
 
-            # Piece ID
             self._set_cell(row_idx, 0, row_data["piece_id"])
 
-            # Verdict (coloured)
-            verdict_item = QTableWidgetItem(row_data["verdict"])
+            # Verdict — coloured using shared palette
+            verdict = row_data["verdict"]
+            verdict_item = QTableWidgetItem(verdict)
             verdict_item.setTextAlignment(Qt.AlignCenter)
             verdict_item.setFont(QFont("Segoe UI", 12, QFont.Bold))
-            if row_data["verdict"] == "NG":
-                verdict_item.setForeground(QColor("#c62828"))
-                verdict_item.setBackground(QColor("#ffebee"))
-            else:
-                verdict_item.setForeground(QColor("#2e7d32"))
-                verdict_item.setBackground(QColor("#e8f5e9"))
+            fg = VERDICT_COLORS.get(verdict, "#1a1d23")
+            bg = "#e8f5e9" if verdict == "OK" else "#ffebee"
+            verdict_item.setForeground(QColor(fg))
+            verdict_item.setBackground(QColor(bg))
             self._table.setItem(row_idx, 1, verdict_item)
 
-            # Size (S/M/L/unknown — empty if legacy row)
             size_text = row_data.get("detected_size", "") or "—"
             size_item = QTableWidgetItem(size_text)
             size_item.setTextAlignment(Qt.AlignCenter)
             size_item.setFont(QFont("Segoe UI", 12, QFont.Bold))
             self._table.setItem(row_idx, 2, size_item)
 
-            # Confidence
             conf_item = QTableWidgetItem(f"{row_data['confidence']:.1%}")
             conf_item.setTextAlignment(Qt.AlignCenter)
             self._table.setItem(row_idx, 3, conf_item)
 
-            # Defects
             dets = row_data.get("detections", [])
             det_text = ", ".join(d.get("label", "unknown") for d in dets) if dets else "—"
             self._set_cell(row_idx, 4, det_text)
 
-            # Timestamp (local time)
-            ts = row_data["timestamp"]
-            try:
-                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                ts = dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
-            except Exception:
-                pass
-            self._set_cell(row_idx, 5, ts)
+            ts_str = iso_to_local_str(row_data["timestamp"], fmt="%Y-%m-%d %H:%M:%S")
+            self._set_cell(row_idx, 5, ts_str)
 
-            # Store image_b64 parallel to row index
             self._row_images.append(row_data.get("image_b64") or "")
 
-        # Update stats bar
-        self._stat_total.setText(f"Total: {total}")
-        self._stat_ng.setText(f"NG: {ng}")
-        # OEE Quality Rate = Good / Total × 100
-        rate = f"{(total-ng)/total*100:.1f}%" if total > 0 else "—"
-        self._stat_rate.setText(f"Quality Rate: {rate}")
+    def _load_inspections(self, batch_id: str) -> None:
+        """Load inspections for the selected batch into the table."""
+        self._current_batch = batch_id
+        rows = self._db.get_recent_inspections(batch_id, limit=500)
+        self._populate_inspection_table(rows)
+
+        total = len(rows)
+        ng    = sum(1 for r in rows if r["verdict"] == "NG")
+        self._update_stats_bar(total, ng)
 
     def _set_cell(self, row: int, col: int, text: str) -> None:
         item = QTableWidgetItem(text)
-        item.setFont(QFont("Consolas", 12))
+        item.setFont(QFont(MONO_FONT, 12))
         self._table.setItem(row, col, item)
 
     def _update_stats_bar(self, total: int, ng: int) -> None:
         """อัพเดต stats bar ด้านล่างตาราง และ batch list item ซ้าย."""
-        # Stats bar — OEE Quality Rate = Good / Total × 100
         self._stat_total.setText(f"Total: {total}")
         self._stat_ng.setText(f"NG: {ng}")
-        rate = f"{(total-ng)/total*100:.1f}%" if total > 0 else "—"
-        self._stat_rate.setText(f"Quality Rate: {rate}")
+        self._stat_rate.setText(f"Quality Rate: {self._batch_ng_rate_str(total, ng)}")
 
-        # Batch list item (อัพ text ตรงๆ ไม่ reload ทั้งหมด)
+        # Patch batch list item text in-place — no full reload needed
         for i in range(self._batch_list.count()):
             item = self._batch_list.item(i)
             if item.data(Qt.UserRole) == self._current_batch:
@@ -402,7 +399,7 @@ class DbViewerDialog(QDialog):
             if qimage.isNull():
                 raise ValueError("QImage decode returned null")
             self._current_pixmap = QPixmap.fromImage(qimage)
-        except Exception as exc:
+        except (binascii.Error, ValueError) as exc:
             logger.error(f"DbViewer: cannot decode image: {exc}")
             self._current_pixmap = None
             self._fullscreen_btn.setEnabled(False)
@@ -633,7 +630,7 @@ class DbViewerDialog(QDialog):
                         r["timestamp"],
                     ])
             QMessageBox.information(self, "Export Complete", f"Saved to:\n{path}")
-        except Exception as exc:
+        except (OSError, csv.Error) as exc:
             QMessageBox.critical(self, "Export Failed", str(exc))
 
     @Slot()
@@ -673,7 +670,7 @@ class DbViewerDialog(QDialog):
         ng_dir    = out_dir / "NG"
         try:
             ng_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as exc:
+        except OSError as exc:
             QMessageBox.critical(self, "Export Failed", f"สร้างโฟลเดอร์ไม่สำเร็จ:\n{exc}")
             return
 
@@ -687,7 +684,7 @@ class DbViewerDialog(QDialog):
                 img_bytes = base64.b64decode(r["image_b64"])
                 (ng_dir / f"{piece_id}.jpg").write_bytes(img_bytes)
                 saved_images += 1
-            except Exception as exc:
+            except (binascii.Error, OSError) as exc:
                 logger.error(f"Failed to save {piece_id}: {exc}")
                 failed += 1
                 continue
@@ -714,7 +711,7 @@ class DbViewerDialog(QDialog):
                     "confidence", "label", "total", "ng", "timestamp",
                 ])
                 writer.writerows(csv_rows)
-        except Exception as exc:
+        except (OSError, csv.Error) as exc:
             QMessageBox.critical(self, "Export Failed", f"เขียน annotations.csv ไม่สำเร็จ:\n{exc}")
             return
 

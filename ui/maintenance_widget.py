@@ -398,7 +398,7 @@ class MaintenanceWidget(QWidget):
                     self._zone_points = pts
                     self._view.set_zone(pts)
                     logger.info(f"Maintenance: loaded persisted zone {pts}")
-            except Exception as exc:
+            except ValueError as exc:
                 logger.warning(f"Maintenance: failed to parse zone: {exc}")
 
         # Threshold
@@ -411,7 +411,7 @@ class MaintenanceWidget(QWidget):
             try:
                 self._reference_gray = np.load(REF_FRAME_PATH)
                 logger.info(f"Maintenance: loaded reference from {REF_FRAME_PATH}")
-            except Exception as exc:
+            except (OSError, ValueError) as exc:
                 logger.warning(f"Maintenance: failed to load reference: {exc}")
 
     def _save_zone_to_settings(self) -> None:
