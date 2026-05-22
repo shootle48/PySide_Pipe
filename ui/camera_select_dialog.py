@@ -66,11 +66,17 @@ def scan_cameras(skip: Optional[set] = None) -> list[dict]:
 class CameraSelectDialog(QDialog):
     """Dialog เลือกกล้อง — scan, list, pick."""
 
-    def __init__(self, current_index: int, parent=None) -> None:
+    def __init__(
+        self,
+        current_index: int,
+        camera_ok: bool = True,   # False = กล้องปัจจุบัน fail → auto-select ตัวแรกที่เจอ
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Select Camera")
         self.setMinimumWidth(400)
         self._current_index  = current_index
+        self._camera_ok      = camera_ok
         self._selected_index: Optional[int] = None
         self._scan_worker: Optional[_ScanWorker] = None
 
@@ -170,16 +176,21 @@ class CameraSelectDialog(QDialog):
 
     def _on_scan_done(self, cams: list) -> None:
         """รับผลจาก background scan — เรียกบน main thread ผ่าน signal"""
-        # เพิ่ม current เข้า list (แสดงเป็น active)
-        current_item = QListWidgetItem(
-            f"  ● Camera {self._current_index}  —  active (currently in use)"
-        )
+        # แถวแรก: กล้องปัจจุบัน (active หรือ failed)
+        if self._camera_ok:
+            current_label = f"  ● Camera {self._current_index}  —  active (currently in use)"
+            current_color = Qt.GlobalColor.green
+        else:
+            current_label = f"  ✕ Camera {self._current_index}  —  failed (ใช้งานไม่ได้)"
+            current_color = Qt.GlobalColor.red
+
+        current_item = QListWidgetItem(current_label)
         current_item.setData(Qt.UserRole, self._current_index)
-        current_item.setForeground(Qt.GlobalColor.green)
+        current_item.setForeground(current_color)
         self._list.addItem(current_item)
-        self._list.setCurrentItem(current_item)
 
         # เพิ่มกล้องอื่นที่เจอ
+        first_ok_item = None
         for cam in cams:
             text = (
                 f"    Camera {cam['index']}  —  "
@@ -188,9 +199,20 @@ class CameraSelectDialog(QDialog):
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, cam["index"])
             self._list.addItem(item)
+            if first_ok_item is None:
+                first_ok_item = item
 
-        total = len(cams) + 1
-        self._info_label.setText(f"พบ {total} กล้อง — ดับเบิลคลิกหรือกด Select")
+        # ถ้ากล้องปัจจุบัน fail → auto-select กล้องตัวแรกที่ใช้ได้
+        if not self._camera_ok and first_ok_item is not None:
+            self._list.setCurrentItem(first_ok_item)
+            self._info_label.setText(
+                f"กล้อง {self._current_index} ใช้ไม่ได้ — เลือก Camera {first_ok_item.data(Qt.UserRole)} แทนอัตโนมัติ"
+            )
+        else:
+            self._list.setCurrentItem(current_item)
+            total = len(cams) + 1
+            self._info_label.setText(f"พบ {total} กล้อง — ดับเบิลคลิกหรือกด Select")
+
         self._refresh_btn.setEnabled(True)
         self._ok_btn.setEnabled(True)
 

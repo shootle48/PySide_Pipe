@@ -809,12 +809,24 @@ class MainWindow(QMainWindow):
 
     def _open_camera_select(self) -> None:
         """เปิด dialog เลือกกล้อง → switch ถ้าเลือก index ใหม่"""
-        dialog = CameraSelectDialog(current_index=self._camera_index, parent=self)
+        # camera_ok = False ถ้าปุ่ม capture ยังถูก disable อยู่ (กล้อง fail)
+        # → dialog จะ auto-select กล้องตัวแรกที่ใช้ได้แทน
+        camera_ok = self._capture_btn.isEnabled() or self._upload_mode
+        dialog = CameraSelectDialog(
+            current_index=self._camera_index,
+            camera_ok=camera_ok,
+            parent=self,
+        )
         if dialog.exec() != QDialog.Accepted:
             return
 
         new_idx = dialog.selected_index()
-        if new_idx is None or new_idx == self._camera_index:
+        if new_idx is None:
+            return
+
+        # อนุญาตให้ switch index เดิมได้ถ้ากล้องกำลัง fail
+        # (ต้องการ re-init worker ใหม่ — ไม่ใช่ no-op)
+        if new_idx == self._camera_index and camera_ok:
             logger.info("Camera select: no change")
             return
 
@@ -934,7 +946,7 @@ class MainWindow(QMainWindow):
         current = self._batch_state.get_state()
         result = request_batch_setup(
             parent         = self,
-            default_size   = current.get("expected_size") or "M",
+            default_size   = current.get("expected_size") or "L",
             default_target = current.get("expected_total", 0),
         )
         if result is None:

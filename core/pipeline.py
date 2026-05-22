@@ -422,6 +422,11 @@ class CameraWorker(QThread):
         fps = self._cap.get(cv2.CAP_PROP_FPS)
         logger.info(f"CameraWorker: {w}×{h} @ {fps:.0f}fps")
 
+        # กล้องเปิดสำเร็จ → แจ้ง UI ให้ enable capture button
+        # (camera_health_changed ปกติ emit เฉพาะตอน recover จาก offline
+        #  แต่ถ้า switch กล้องมาจากสถานะ error จะไม่มีการ recover → ต้อง emit ตรงนี้ด้วย)
+        self.camera_health_changed.emit(True)
+
         # Warmup — discard first 10 frames (exposure settling)
         logger.info("CameraWorker: warming up (10 frames)...")
         for _ in range(10):

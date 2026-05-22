@@ -1,0 +1,54 @@
+{
+  "project_name": "Station Pipe Inspector | Smart-sense",
+  "user_name": "Theprit",
+  "overall_pct": 70,
+  "updated_at": "2026-05-15T00:00:00+07:00",
+  "last_report_changes": [],
+  "next_week_plan": [],
+  "sections": [
+    {
+      "name": "Layer 1 — Setup (Calibration & Config)",
+      "progress_pct": 50,
+      "items": [
+        { "label": "ตรวจ camera + health monitoring",              "status": "done",    "note": "" },
+        { "label": "ตั้ง detection zone (4-point click)",          "status": "done",    "note": "" },
+        { "label": "Drift detection (zone stability)",             "status": "done",    "note": "" },
+        { "label": "Camera feed + Overlay + Readiness",           "status": "done",    "note": "" },
+        { "label": "Station ID",                                   "status": "blocked", "note": "รอ confirm ว่าจะใช้กับ Multi-station หรือไม่" },
+        { "label": "Config file (SKU / defect scope)",             "status": "pending", "note": "" },
+        { "label": "Calibration gate (บังคับ calibrate ก่อน run)", "status": "pending", "note": "" }
+      ]
+    },
+    {
+      "name": "Layer 2 — Inference (Trigger & Detection)",
+      "progress_pct": 70,
+      "items": [
+        { "label": "Trigger: manual",                                   "status": "done",        "note": "" },
+        { "label": "System state (Idle / Scanning / Processing / Error)","status": "done",        "note": "" },
+        { "label": "Defect detection + labeling",                       "status": "done",        "note": "" },
+        { "label": "Error handling (camera / inference)",               "status": "done",        "note": "" },
+        { "label": "Size classification S/M/L + auto-NG",              "status": "in_progress", "note": "รอสเปคขนาดชิ้นงานทั้ง 3 ชนิด" },
+        { "label": "RS485 output → PLC (ส่ง OK/NG)",                   "status": "pending",     "note": "รอทดสอบที่ site" },
+        { "label": "Trigger: sensor (RS485)",                           "status": "pending",     "note": "รอทดสอบที่ site" }
+      ]
+    },
+    {
+      "name": "Layer 3 — Dashboard (Monitoring & Output)",
+      "progress_pct": 89,
+      "items": [
+        { "label": "Live result display + history",               "status": "done",    "note": "" },
+        { "label": "Batch counter (Total / NG / Quality Rate)",   "status": "done",    "note": "" },
+        { "label": "OEE Quality Rate",                            "status": "done",    "note": "" },
+        { "label": "Logging ต่อเนื่อง (SQLite failsafe)",          "status": "done",    "note": "" },
+        { "label": "Export CSV",                                  "status": "done",    "note": "" },
+        { "label": "Export Dataset (ภาพ + annotations)",           "status": "done",    "note": "" },
+        { "label": "Station ID ใน log/export",                    "status": "blocked", "note": "รอชี้แจง (เชื่อมกับ Layer 1 Station ID)" }
+      ]
+    }
+  ],
+  "blockers": [
+    "Station ID — รอ confirm ว่าจะใช้กับระบบ Multi-station หรือไม่",
+    "Size threshold S/M/L — รอสเปคขนาดชิ้นงานจริงจากทีม",
+    "RS485 (output + trigger) — รอนัดทดสอบที่ site กับ PLC จริง"
+  ]
+}

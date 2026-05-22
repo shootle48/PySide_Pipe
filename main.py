@@ -33,12 +33,12 @@ def _setup_logging() -> None:
 
       logs/app.log         — ทุกอย่าง (รวมทั้งสองฝั่ง)
       logs/smartsense.log  — เฉพาะฝั่ง Smart-Sense library / hardware
-                              (logger name ขึ้นต้นด้วย "smartsense.")
+                            (logger name ขึ้นต้นด้วย "smartsense.")
 
     เวลามีปัญหาที่หน้างาน:
       - ปัญหา detection / UI / state         → ดู app.log
       - ปัญหา trigger ไม่เข้า / sorter ไม่ทำงาน → ดู smartsense.log
-        (ถ้า smartsense.log มี ERROR → ปัญหาอยู่ฝั่ง hardware/library พี่ Smart-Sense)
+        (ถ้า smartsense.log มี ERROR → ปัญหาอยู่ฝั่ง hardware/library Smart-Sense)
         (ถ้า smartsense.log clean แต่ app.log ERROR → ปัญหาฝั่งโค้ดผม)
     """
     log_dir = Path(__file__).parent / "logs"
@@ -98,7 +98,6 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("Pipe Inspector")
-    app.setOrganizationName("Research")
 
     try:
         window = MainWindow()
