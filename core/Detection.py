@@ -14,9 +14,9 @@ class Detection:
 
     def processing(self):
         gray_img = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-        # blur_img = cv2.medianBlur(gray_img, 1)
+        blur_img = cv2.GaussianBlur(gray_img, (13, 13), 0)
         clahe = cv2.createCLAHE(clipLimit=10.0, tileGridSize=(20, 20))
-        enhanced = clahe.apply(gray_img)
+        enhanced = clahe.apply(blur_img)
 
         circles = cv2.HoughCircles(
             enhanced,
@@ -25,7 +25,7 @@ class Detection:
             minDist=4000,
             param1=150,
             param2=10,
-            minRadius=1,
+            minRadius=40,
             maxRadius=215,
         )
 
@@ -56,7 +56,7 @@ class Detection:
             minDist=4000,
             param1=100,
             param2=15,
-            minRadius=1,
+            minRadius=40,
             maxRadius=int(r_shrink * 0.90),
         )
 
