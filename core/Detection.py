@@ -21,7 +21,7 @@ class Detection:
         circles = cv2.HoughCircles(
             enhanced,
             cv2.HOUGH_GRADIENT,
-            dp=2,
+            dp=1,
             minDist=4000,
             param1=150,
             param2=10,
