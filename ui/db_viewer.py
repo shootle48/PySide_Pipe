@@ -168,9 +168,9 @@ class DbViewerDialog(QDialog):
         # ── Table ──────────────────────────────────────────────────────
         self._table = QTableWidget()
         self._table.setObjectName("inspectionTable")
-        self._table.setColumnCount(6)
+        self._table.setColumnCount(5)
         self._table.setHorizontalHeaderLabels([
-            "Piece ID", "Verdict", "Size", "Confidence", "Defects", "Timestamp",
+            "Piece ID", "Verdict", "Size", "Defects", "Timestamp",
         ])
         self._table.horizontalHeader().setStretchLastSection(True)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -180,8 +180,7 @@ class DbViewerDialog(QDialog):
         self._table.setColumnWidth(0, 180)
         self._table.setColumnWidth(1, 80)
         self._table.setColumnWidth(2, 60)    # Size
-        self._table.setColumnWidth(3, 100)   # Confidence
-        self._table.setColumnWidth(4, 140)   # Defects
+        self._table.setColumnWidth(3, 140)   # Defects
         self._table.itemSelectionChanged.connect(self._on_row_selected)
         v_split.addWidget(self._table)
 
@@ -328,16 +327,12 @@ class DbViewerDialog(QDialog):
             size_item.setFont(QFont("Segoe UI", 12, QFont.Bold))
             self._table.setItem(row_idx, 2, size_item)
 
-            conf_item = QTableWidgetItem(f"{row_data['confidence']:.1%}")
-            conf_item.setTextAlignment(Qt.AlignCenter)
-            self._table.setItem(row_idx, 3, conf_item)
-
             dets = row_data.get("detections", [])
             det_text = ", ".join(d.get("label", "unknown") for d in dets) if dets else "—"
-            self._set_cell(row_idx, 4, det_text)
+            self._set_cell(row_idx, 3, det_text)
 
             ts_str = iso_to_local_str(row_data["timestamp"], fmt="%Y-%m-%d %H:%M:%S")
-            self._set_cell(row_idx, 5, ts_str)
+            self._set_cell(row_idx, 4, ts_str)
 
             self._row_images.append(row_data.get("image_b64") or "")
 
@@ -616,8 +611,7 @@ class DbViewerDialog(QDialog):
             with open(path, "w", newline="", encoding="utf-8-sig") as f:  # utf-8-sig = BOM for Excel
                 writer = csv.writer(f)
                 writer.writerow([
-                    "piece_id", "verdict", "detected_size",
-                    "confidence", "detections", "timestamp",
+                    "piece_id", "verdict", "detected_size", "detections", "timestamp",
                 ])
                 for r in rows:
                     dets = ", ".join(d["label"] for d in r.get("detections", []))
@@ -625,7 +619,6 @@ class DbViewerDialog(QDialog):
                         r["piece_id"],
                         r["verdict"],
                         r.get("detected_size", "") or "",
-                        f"{r['confidence']:.3f}",
                         dets or "—",
                         r["timestamp"],
                     ])
@@ -642,8 +635,8 @@ class DbViewerDialog(QDialog):
           ├── NG/
           │   ├── BATCH-XXXXXX-0001.jpg
           │   └── ...
-          └── annotations.csv  (piece_id, batch_id, verdict, confidence,
-                               label, bbox_x, bbox_y, bbox_w, bbox_h, timestamp)
+          └── annotations.csv  (piece_id, batch_id, verdict,
+                               detected_size, label, total, ng, timestamp)
         """
         target_dir = QFileDialog.getExistingDirectory(
             self, "เลือกโฟลเดอร์ปลายทางสำหรับ Dataset"
@@ -698,7 +691,6 @@ class DbViewerDialog(QDialog):
                 r["batch_id"],
                 r["verdict"],
                 r.get("detected_size", "") or "",
-                f"{r['confidence']:.3f}",
                 labels, total, ng, r["timestamp"],
             ])
 
@@ -708,7 +700,7 @@ class DbViewerDialog(QDialog):
                 writer = csv.writer(f)
                 writer.writerow([
                     "piece_id", "batch_id", "verdict", "detected_size",
-                    "confidence", "label", "total", "ng", "timestamp",
+                    "label", "total", "ng", "timestamp",
                 ])
                 writer.writerows(csv_rows)
         except (OSError, csv.Error) as exc:

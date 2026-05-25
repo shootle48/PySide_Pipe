@@ -16,8 +16,7 @@ Signal flow:
 Result dict shape:
   {
     "verdict":    "OK" | "NG",
-    "confidence": float,
-    "detections": [{"label": str, "confidence": float,
+    "detections": [{"label": str,
                     "bbox": {"x": int, "y": int, "w": int, "h": int}}],
     "image_b64":  str,           # base64 JPEG of the inspected frame (RGB)
     # piece_id: ใช้ UUID ภายใน DB เท่านั้น — ไม่ include ใน result dict
@@ -38,8 +37,9 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from scipy.signal import find_peaks
 from PySide6.QtCore import QThread, Signal
+
+from core.Detection import Detection
 
 from core.constants import TriggerMode, Verdict, WorkerStatus
 from core.utils import utcnow_iso
@@ -95,182 +95,43 @@ class FrameBuffer:
 
 class PipeInspector:
     """
-    Encapsulates the full OpenCV inspection pipeline from Test_1.ipynb.
-    Returns a plain dict instead of a Pydantic model (no extra dependencies).
+    Thin wrapper ที่เรียก Detection แล้ว encode ผลลัพธ์เป็น base64 result dict.
+    CV logic ทั้งหมดอยู่ใน core/Detection.py
     """
 
     def __init__(
         self,
-        min_defect_area:    int   = MIN_DEFECT_AREA,
-        inner_radius_ratio: float = INNER_RADIUS_RATIO,
-        jpeg_quality:       int   = JPEG_QUALITY,
-        size_classifier=None,    # Optional[SizeClassifier] — None = ข้าม size detect
+        jpeg_quality: int = JPEG_QUALITY,
+        size_classifier=None,   # ยังรองรับ interface เดิม แต่ไม่ใช้แล้ว
     ) -> None:
-        self.min_defect_area    = min_defect_area
-        self.inner_radius_ratio = inner_radius_ratio
-        self.jpeg_quality       = jpeg_quality
-        self.size_classifier    = size_classifier
+        self.jpeg_quality = jpeg_quality
 
     def inspect(self, frame_bgr: np.ndarray) -> dict:
         """
-        Run the full inspection pipeline on one BGR frame.
-        Returns a result dict (see module docstring for shape).
+        Run Detection pipeline on one BGR frame.
+        Returns a result dict compatible with CameraWorker signals.
         """
-        circle = self._find_pipe_circle(frame_bgr)
+        det = Detection(frame_bgr)
+        vis = det.processed_image   # BGR image ที่ Detection วาด bbox + verdict ลงแล้ว
+        verdict = det.verdict
 
-        if circle is None:
-            logger.warning("PipeInspector: pipe circle not detected.")
-            return self._build_result(
-                verdict="NG",
-                confidence=0.0,
-                detections=[{
-                    "label": "pipe_not_found",
-                    "confidence": 0.0,
-                    "bbox": {"x": 0, "y": 0,
-                             "w": frame_bgr.shape[1],
-                             "h": frame_bgr.shape[0]},
-                }],
-                frame_bgr=frame_bgr,
-                pipe_radius_px=None,
-                detected_size="unknown",
-            )
-
-        cx, cy, radius = circle
-        gray, mask, inner_radius = self._extract_roi(frame_bgr, cx, cy, radius)
-        defect_contours = self._detect_defects(gray, mask)
-
-        significant = [c for c in defect_contours if cv2.contourArea(c) > self.min_defect_area]
-        verdict = "NG" if significant else "OK"
-
-        # ── Classify size จาก outer radius ─────────────────────────────────
-        # ถ้าไม่มี classifier ให้ส่ง "" (= ไม่ได้ใช้ feature นี้)
-        if self.size_classifier is not None:
-            detected_size = self.size_classifier.classify(radius)
-        else:
-            detected_size = ""
-
-        logger.info(
-            f"PipeInspector: {verdict} | defects={len(significant)} | "
-            f"pipe=({cx},{cy}) r={radius} size={detected_size!r}"
-        )
-
-        inner_area = np.pi * inner_radius ** 2
-        detections = self._build_detections(significant)
-        confidence = detections[0]["confidence"] if detections else 0.99
-
-        return self._build_result(
-            verdict=verdict,
-            confidence=confidence,
-            detections=detections,
-            frame_bgr=frame_bgr,
-            pipe_radius_px=int(radius),
-            detected_size=detected_size,
-        )
-
-    # ── Private CV stages (1-to-1 with notebook cells) ────────────────────
-
-    def _find_pipe_circle(self, frame_bgr: np.ndarray) -> Optional[tuple]:
-        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        blur = cv2.medianBlur(gray, 11)
-        circles = cv2.HoughCircles(
-            blur, cv2.HOUGH_GRADIENT,
-            dp=1, minDist=1000, param1=50, param2=30,
-            minRadius=90, maxRadius=180,
-        )
-        if circles is None:
-            return None
-        cx, cy, r = np.round(circles[0][0]).astype(int)
-        return int(cx), int(cy), int(r)
-
-    def _extract_roi(self, frame_bgr: np.ndarray, cx: int, cy: int, radius: int):
-        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        blur = cv2.medianBlur(gray, 11)
-
-        # จำกัดพื้นที่ค้นหาไว้ที่ 80% ของวงนอก
-        r_shrink = int(radius * 0.80)
-        mask_outer = np.zeros_like(blur)
-        cv2.circle(mask_outer, (cx, cy), r_shrink, 255, -1)
-        roi = cv2.bitwise_and(blur, mask_outer)
-
-        # Radial intensity profile เพื่อหา r_inner จาก gradient
-        angles = np.linspace(0, 2 * np.pi, 360)
-        intensity_profile = []
-        for r_val in range(r_shrink):
-            vals = [
-                roi[int(cy + r_val * np.sin(a)), int(cx + r_val * np.cos(a))]
-                for a in angles
-                if (0 <= int(cx + r_val * np.cos(a)) < roi.shape[1] and
-                    0 <= int(cy + r_val * np.sin(a)) < roi.shape[0])
-            ]
-            intensity_profile.append(np.mean(vals) if vals else 0)
-        intensity_profile = np.array(intensity_profile)
-
-        gradient = np.abs(np.gradient(intensity_profile))
-        peaks, _ = find_peaks(gradient, height=np.max(gradient) * 0.2, distance=15)
-        peaks_inside = [p for p in peaks if p < r_shrink]
-
-        if peaks_inside:
-            strong = [p for p in peaks_inside if gradient[p] >= np.max(gradient) * 0.30]
-            r_inner = min(strong) if strong else min(peaks_inside)
-            r_inner = max(r_inner - 8, 10)
-        else:
-            r_inner = int(radius * self.inner_radius_ratio)
-
-        mask = np.zeros_like(gray)
-        cv2.circle(mask, (cx, cy), r_inner, 255, -1)
-        return gray, mask, r_inner
-
-    def _detect_defects(self, gray: np.ndarray, mask: np.ndarray) -> list:
-        inside_pipe  = cv2.bitwise_and(gray, mask)
-        inside_blur  = cv2.GaussianBlur(inside_pipe, (5, 5), 0)
-        defect_thresh = cv2.adaptiveThreshold(
-            inside_blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV, 201, 10,
-        )
-        defect_thresh = cv2.bitwise_and(defect_thresh, mask)
-        kernel        = np.ones((2, 2), np.uint8)
-        defect_clean  = cv2.morphologyEx(defect_thresh, cv2.MORPH_OPEN, kernel, iterations=2)
-        contours, _   = cv2.findContours(defect_clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        return list(contours)
-
-    def _build_detections(self, contours: list) -> list:
-        detections = []
-        for contour in contours:
-            area           = cv2.contourArea(contour)
-            bx, by, bw, bh = cv2.boundingRect(contour)
-            confidence     = round(min(0.99, 0.50 + (area / SIGNIFICANT_AREA) * 0.49), 3)
-            detections.append({
-                "label":      "defect",
-                "confidence": confidence,
-                "bbox":       {"x": int(bx), "y": int(by), "w": int(bw), "h": int(bh)},
-            })
-        detections.sort(key=lambda d: d["confidence"], reverse=True)
-        return detections
-
-    def _build_result(
-        self,
-        verdict: str,
-        confidence: float,
-        detections: list,
-        frame_bgr: np.ndarray,
-        pipe_radius_px: Optional[int] = None,
-        detected_size: str = "",
-    ) -> dict:
-        # BGR → RGB so the base64 JPEG is browser/Qt-compatible
-        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        # encode vis → base64 JPEG (BGR → RGB ก่อน)
+        vis_rgb = cv2.cvtColor(vis, cv2.COLOR_BGR2RGB)
         success, buffer = cv2.imencode(
-            '.jpg', frame_rgb, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality]
+            '.jpg', vis_rgb, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality]
         )
         if not success:
             raise RuntimeError("cv2.imencode failed.")
         image_b64 = base64.b64encode(buffer).decode('utf-8')
+
+        logger.info("PipeInspector: %s", verdict)
+
         return {
             "verdict":        verdict,
-            "confidence":     confidence,
-            "detections":     detections,
+            "detections":     [],    # bbox วาดลงรูปแล้ว — QPainter ไม่ต้องวาดซ้ำ
             "image_b64":      image_b64,
-            "pipe_radius_px": pipe_radius_px,
-            "detected_size":  detected_size,
+            "pipe_radius_px": None,
+            "detected_size":  "",
         }
 
 
@@ -344,12 +205,10 @@ class CameraWorker(QThread):
         # Mismatch — force NG + add size_mismatch detection label
         h, w = frame_shape[:2]
         if result["verdict"] == Verdict.OK:
-            result["verdict"]    = Verdict.NG
-            result["confidence"] = 1.0   # classifier decision is certain
+            result["verdict"] = Verdict.NG
         result["detections"].append({
-            "label":      "size_mismatch",
-            "confidence": 1.0,
-            "bbox":       {"x": 0, "y": 0, "w": int(w), "h": int(h)},
+            "label": "size_mismatch",
+            "bbox":  {"x": 0, "y": 0, "w": int(w), "h": int(h)},
         })
         logger.warning(
             f"CameraWorker: size mismatch — expected={expected} "
@@ -591,7 +450,6 @@ class CameraWorker(QThread):
             piece_id      = internal_piece_id,
             batch_id      = batch_snapshot["id"],
             verdict       = result["verdict"],
-            confidence    = result["confidence"],
             timestamp     = timestamp,
             detections    = result["detections"],
             image_b64     = result.get("image_b64", "") if save_image else "",

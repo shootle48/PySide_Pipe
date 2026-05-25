@@ -183,7 +183,6 @@ class DatabaseManager:
         piece_id: str,
         batch_id: str,
         verdict: str,
-        confidence: float,
         timestamp: str,
         detections: list,
         image_b64: str = "",
@@ -195,10 +194,10 @@ class DatabaseManager:
                 INSERT INTO inspections
                     (piece_id, batch_id, verdict, confidence, timestamp,
                      detections, image_b64, detected_size)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, 0.0, ?, ?, ?, ?)
                 """,
                 (
-                    piece_id, batch_id, verdict, confidence, timestamp,
+                    piece_id, batch_id, verdict, timestamp,
                     json.dumps(detections), image_b64, detected_size,
                 ),
             )
@@ -209,7 +208,7 @@ class DatabaseManager:
         with self._lock:
             rows = self._conn.execute(
                 """
-                SELECT piece_id, verdict, confidence, timestamp,
+                SELECT piece_id, verdict, timestamp,
                        detections, image_b64, detected_size
                 FROM   inspections
                 WHERE  batch_id = ?
@@ -228,7 +227,7 @@ class DatabaseManager:
         with self._lock:
             rows = self._conn.execute(
                 """
-                SELECT piece_id, batch_id, verdict, confidence, timestamp,
+                SELECT piece_id, batch_id, verdict, timestamp,
                        detections, image_b64, detected_size
                 FROM   inspections
                 WHERE  image_b64 IS NOT NULL AND image_b64 != ''

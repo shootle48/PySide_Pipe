@@ -93,7 +93,7 @@ class FrameWidget(QWidget):
         """
         Display the inspection result frame with bounding boxes.
         image_b64: base64-encoded JPEG (RGB, from pipeline._build_result).
-        detections: list of {"label", "confidence", "bbox": {"x","y","w","h"}}.
+        detections: list of {"label", "bbox": {"x","y","w","h"}}.
         """
         try:
             jpg_bytes = base64.b64decode(image_b64)
@@ -196,7 +196,7 @@ class FrameWidget(QWidget):
             painter.drawRect(bx, by, bw, bh)
 
             # Label chip background + text
-            label      = f"{det['label']}  {det['confidence']:.0%}"
+            label      = det['label']
             text_rect  = fm.boundingRect(label)
             chip_w     = text_rect.width() + 10
             chip_h     = 16
