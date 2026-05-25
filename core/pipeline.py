@@ -20,7 +20,7 @@ Result dict shape:
     "detections": [{"label": str, "confidence": float,
                     "bbox": {"x": int, "y": int, "w": int, "h": int}}],
     "image_b64":  str,           # base64 JPEG of the inspected frame (RGB)
-    "piece_id":   str,           # e.g. "BATCH-3A9F12-0042"
+    # piece_id: ใช้ UUID ภายใน DB เท่านั้น — ไม่ include ใน result dict
     "timestamp":  str,           # UTC ISO-8601
     "batch":      {"id": str, "total": int, "ng": int},
   }
@@ -33,6 +33,7 @@ import logging
 import os
 import threading
 import time
+import uuid
 from typing import Optional
 
 import cv2
@@ -580,12 +581,14 @@ class CameraWorker(QThread):
     def _persist_result(self, result: dict) -> dict:
         """Increment batch counter, write to DB, return enriched payload dict."""
         batch_snapshot = self._batch_state.increment(result["verdict"])
-        piece_id  = f"{batch_snapshot['id']}-{batch_snapshot['seq']:04d}"
         timestamp = utcnow_iso()
+
+        # piece_id ใช้ UUID ภายใน DB เท่านั้น — ไม่ expose ออก UI
+        internal_piece_id = uuid.uuid4().hex[:12].upper()
 
         save_image = self._should_save_image(result["verdict"], batch_snapshot["id"])
         self._db.save_inspection(
-            piece_id      = piece_id,
+            piece_id      = internal_piece_id,
             batch_id      = batch_snapshot["id"],
             verdict       = result["verdict"],
             confidence    = result["confidence"],
@@ -598,7 +601,6 @@ class CameraWorker(QThread):
 
         return {
             **result,
-            "piece_id":  piece_id,
             "timestamp": timestamp,
             "batch":     batch_snapshot,
         }

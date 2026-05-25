@@ -240,7 +240,7 @@ class MainWindow(QMainWindow):
 
         layout.addStretch(1)
 
-        # Centre — Batch ID
+        # Centre — Batch (run number: 1, 2, 3, …)
         layout.addWidget(QLabel("Batch"))
         self._batch_id_label = QLabel("—")
         self._batch_id_label.setObjectName("batchId")
@@ -727,7 +727,6 @@ class MainWindow(QMainWindow):
         No widget interaction — safe to unit-test without a QApplication.
         """
         verdict   = result["verdict"]
-        piece_id  = result.get("piece_id", "—")
         confs     = result.get("detections", [])
         timestamp = result.get("timestamp", "")
         det_size  = result.get("detected_size", "") or ""
@@ -736,7 +735,7 @@ class MainWindow(QMainWindow):
         detail    = confs[0]["label"].replace("_", " ") if confs else "No defect"
         tag       = "[OK]" if verdict == "OK" else "[NG]"
         size_code = (det_size[0] if det_size and det_size != "unknown" else "?") if det_size else "-"
-        text      = f"  {tag}  {piece_id:<20}  {size_code}  {detail:<18}  {time_str}"
+        text      = f"  {tag}  {size_code}  {detail:<22}  {time_str}"
 
         fg = VERDICT_COLORS.get(verdict, "#1a1d23")
         bg = "#e8f5e9" if verdict == "OK" else "#ffebee"
@@ -764,7 +763,6 @@ class MainWindow(QMainWindow):
         for row in reversed(rows):   # DB ส่งมา DESC → reverse ก่อน insertItem(0) จะได้ลำดับถูก
             self._prepend_history_row({
                 "verdict":       row["verdict"],
-                "piece_id":      row["piece_id"],
                 "detections":    row["detections"],
                 "timestamp":     row["timestamp"],
                 "detected_size": row.get("detected_size", "") if isinstance(row, dict) else "",

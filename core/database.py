@@ -105,6 +105,12 @@ class DatabaseManager:
 
     # ── Batch operations ───────────────────────────────────────────────────
 
+    def get_next_run_number(self) -> int:
+        """คืน run number ถัดไป = จำนวน batch ทั้งหมดใน DB + 1"""
+        with self._lock:
+            row = self._conn.execute("SELECT COUNT(*) FROM batches").fetchone()
+        return (row[0] or 0) + 1
+
     def get_active_batch(self) -> Optional[dict]:
         with self._lock:
             row = self._conn.execute(

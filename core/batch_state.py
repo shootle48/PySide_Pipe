@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
-import uuid
 from dataclasses import dataclass
 
 from core.utils import utcnow_iso
@@ -22,13 +21,15 @@ logger = logging.getLogger(__name__)
 
 # ── Module-level helpers ───────────────────────────────────────────────────
 
-def _make_batch_id() -> str:
-    """Generate a short, human-readable batch ID.
+def _make_batch_id(db=None) -> str:
+    """Generate a sequential run number string: "1", "2", "3", …
 
-    Lives at module level because it has no class dependency.
-    Example: ``"BATCH-3A9F12"``
+    ถามจำนวน batch ที่มีอยู่ใน DB แล้ว +1 เพื่อให้ได้ลำดับถัดไป
+    ถ้าไม่มี db (test mode) ให้คืน "1" เสมอ
     """
-    return f"BATCH-{uuid.uuid4().hex[:6].upper()}"
+    if db is not None:
+        return str(db.get_next_run_number())
+    return "1"
 
 
 # ── Internal data class ────────────────────────────────────────────────────
@@ -36,7 +37,6 @@ def _make_batch_id() -> str:
 @dataclass
 class _BatchData:
     batch_id:       str
-    seq:            int = 0    # monotone sequence for piece_id generation
     total:          int = 0    # display counter (source of truth: in-memory)
     ng:             int = 0
     expected_total: int = 0    # target pieces for this batch (user-set)
@@ -71,21 +71,19 @@ class BatchStateManager:
         if self._db is not None:
             recovered = self._db.get_active_batch()
             if recovered:
-                max_seq = self._db.get_max_piece_seq(recovered["id"])
                 logger.info(
-                    "Recovered batch %s (total=%d ng=%d seq=%d)",
-                    recovered["id"], recovered["total"], recovered["ng"], max_seq,
+                    "Recovered batch %s (total=%d ng=%d)",
+                    recovered["id"], recovered["total"], recovered["ng"],
                 )
                 return _BatchData(
                     batch_id=recovered["id"],
-                    seq=max_seq,
                     total=recovered["total"],
                     ng=recovered["ng"],
                     expected_total=recovered.get("expected_total", 0),
                     expected_size=recovered.get("expected_size", "") or "",
                 )
 
-        new_id = _make_batch_id()
+        new_id = _make_batch_id(self._db)
         if self._db is not None:
             self._db.create_batch(new_id, utcnow_iso())
         logger.info("New batch started: %s", new_id)
@@ -100,7 +98,6 @@ class BatchStateManager:
         never causes the UI counter to fall behind.
         """
         with self._lock:
-            self._data.seq   += 1
             self._data.total += 1
             if verdict == "NG":
                 self._data.ng += 1
@@ -122,7 +119,7 @@ class BatchStateManager:
 
     def reset(self, expected_total: int = 0, expected_size: str = "") -> dict:
         """Close the current batch and open a new one."""
-        new_id = _make_batch_id()
+        new_id = _make_batch_id(self._db)
         now    = utcnow_iso()
         with self._lock:
             old_id = self._data.batch_id
@@ -179,7 +176,6 @@ class BatchStateManager:
         """Return a plain-dict copy of current state (caller must hold lock or be reading atomically)."""
         return {
             "id":             self._data.batch_id,
-            "seq":            self._data.seq,
             "total":          self._data.total,
             "ng":             self._data.ng,
             "expected_total": self._data.expected_total,
