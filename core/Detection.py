@@ -14,7 +14,7 @@ class Detection:
 
     def processing(self):
         gray_img = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-        blur_img = cv2.GaussianBlur(gray_img, (3, 3), 0)
+        blur_img = cv2.GaussianBlur(gray_img, (7, 7), 0)
         clahe = cv2.createCLAHE(clipLimit=10.0, tileGridSize=(20, 20))
         enhanced = clahe.apply(blur_img)
 
