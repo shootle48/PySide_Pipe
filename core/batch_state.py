@@ -13,6 +13,7 @@ import logging
 import sqlite3
 import threading
 from dataclasses import dataclass
+from datetime import datetime
 
 from core.utils import utcnow_iso
 
@@ -21,15 +22,14 @@ logger = logging.getLogger(__name__)
 
 # ── Module-level helpers ───────────────────────────────────────────────────
 
-def _make_batch_id(db=None) -> str:
-    """Generate a sequential run number string: "1", "2", "3", …
+def _make_batch_id(size: str = "") -> str:
+    """Generate a human-readable batch ID: {size}_{YYYYMMDD}_{HHMM}
 
-    ถามจำนวน batch ที่มีอยู่ใน DB แล้ว +1 เพื่อให้ได้ลำดับถัดไป
-    ถ้าไม่มี db (test mode) ให้คืน "1" เสมอ
+    ตัวอย่าง: "M_20260525_1430"  (size M, 25 May 2026, 14:30 local time)
+    ถ้า size ว่าง (startup placeholder): "20260525_1430"
     """
-    if db is not None:
-        return str(db.get_next_run_number())
-    return "1"
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    return f"{size}_{ts}" if size else ts
 
 
 # ── Internal data class ────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ class BatchStateManager:
                     expected_size=recovered.get("expected_size", "") or "",
                 )
 
-        new_id = _make_batch_id(self._db)
+        new_id = _make_batch_id()   # startup placeholder — no size yet
         if self._db is not None:
             self._db.create_batch(new_id, utcnow_iso())
         logger.info("New batch started: %s", new_id)
@@ -119,7 +119,7 @@ class BatchStateManager:
 
     def reset(self, expected_total: int = 0, expected_size: str = "") -> dict:
         """Close the current batch and open a new one."""
-        new_id = _make_batch_id(self._db)
+        new_id = _make_batch_id(expected_size)   # e.g. "M_20260525_1430"
         now    = utcnow_iso()
         with self._lock:
             old_id = self._data.batch_id

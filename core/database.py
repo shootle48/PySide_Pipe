@@ -105,10 +105,10 @@ class DatabaseManager:
 
     # ── Batch operations ───────────────────────────────────────────────────
 
-    def get_next_run_number(self) -> int:
-        """คืน run number ถัดไป = จำนวน batch ทั้งหมดใน DB + 1"""
+    def get_next_piece_number(self) -> int:
+        """คืน piece number ถัดไป = จำนวน inspection ทั้งหมดใน DB + 1"""
         with self._lock:
-            row = self._conn.execute("SELECT COUNT(*) FROM batches").fetchone()
+            row = self._conn.execute("SELECT COUNT(*) FROM inspections").fetchone()
         return (row[0] or 0) + 1
 
     def get_active_batch(self) -> Optional[dict]:
@@ -275,21 +275,6 @@ class DatabaseManager:
                 (batch_id, verdict),
             ).fetchone()
         return int(row["c"] or 0)
-
-    def get_max_piece_seq(self, batch_id: str) -> int:
-        """คืน sequence number สูงสุดที่ใช้ไปแล้วใน batch นี้.
-        ใช้ป้องกัน piece_id ชนกันหลังจากมีการลบ record."""
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT piece_id FROM inspections WHERE batch_id = ? ORDER BY piece_id DESC LIMIT 1",
-                (batch_id,),
-            ).fetchone()
-        if row is None:
-            return 0
-        try:
-            return int(row["piece_id"].rsplit("-", 1)[-1])
-        except (ValueError, IndexError):
-            return 0
 
     # ── CRUD — Delete / Update ─────────────────────────────────────────────
 

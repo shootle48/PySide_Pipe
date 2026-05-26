@@ -32,7 +32,6 @@ import logging
 import os
 import threading
 import time
-import uuid
 from typing import Optional
 
 import cv2
@@ -442,8 +441,7 @@ class CameraWorker(QThread):
         batch_snapshot = self._batch_state.increment(result["verdict"])
         timestamp = utcnow_iso()
 
-        # piece_id ใช้ UUID ภายใน DB เท่านั้น — ไม่ expose ออก UI
-        internal_piece_id = uuid.uuid4().hex[:12].upper()
+        internal_piece_id = str(self._db.get_next_piece_number())
 
         save_image = self._should_save_image(result["verdict"], batch_snapshot["id"])
         self._db.save_inspection(

@@ -170,7 +170,7 @@ class DbViewerDialog(QDialog):
         self._table.setObjectName("inspectionTable")
         self._table.setColumnCount(5)
         self._table.setHorizontalHeaderLabels([
-            "Piece ID", "Verdict", "Size", "Defects", "Timestamp",
+            "No.", "Verdict", "Size", "Defects", "Timestamp",
         ])
         self._table.horizontalHeader().setStretchLastSection(True)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
