@@ -50,7 +50,7 @@ from core.size_classifier import SizeClassifier
 from core.utils           import iso_to_local_str
 from ui.frame_widget          import FrameWidget
 from ui.db_viewer             import DbViewerDialog
-from ui.camera_select_dialog  import CameraSelectDialog
+from ui.camera_select_dialog  import CameraSelectDialog, scan_cameras
 from ui.maintenance_widget    import MaintenanceWidget
 from ui.batch_setup_dialog    import request_batch_setup
 from core.rs485_worker import RS485InputWorker, MockRS485DIO
@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
 
         # ── Persisted settings ─────────────────────────────────────────────
         self._settings     = QSettings()   # uses app/org name from main.py
-        self._camera_index = int(self._settings.value("camera/index", CAMERA_INDEX))
+        self._camera_index = self._resolve_camera_index()
 
         # ── Backend singletons ─────────────────────────────────────────────
         self._db               = DatabaseManager()
@@ -785,6 +785,34 @@ class MainWindow(QMainWindow):
         self._update_counters(state)
 
     # ── Camera management ─────────────────────────────────────────────────
+
+    def _resolve_camera_index(self) -> int:
+        """Return saved camera index if detected, else auto-select first available.
+
+        ลำดับ:
+          1. โหลด saved index จาก QSettings (default = CAMERA_INDEX constant)
+          2. Scan กล้องที่มีอยู่จริง (index 0-5)
+          3. ถ้า saved index ใช้ได้ → คืน index นั้น (พฤติกรรมเดิม)
+          4. ถ้าไม่ work → หยิบ index แรกที่เจอ + save ไว้
+          5. ถ้าไม่เจอกล้องเลย → คืน saved index (error จะขึ้นใน CameraWorker)
+        """
+        saved = int(self._settings.value("camera/index", CAMERA_INDEX))
+        available = scan_cameras()
+        available_indices = {c["index"] for c in available}
+
+        if saved in available_indices:
+            return saved   # กล้องที่บันทึกไว้ยังใช้ได้
+
+        if available:
+            first = available[0]["index"]
+            logger.info(
+                "Camera index %d not available — auto-selecting index %d", saved, first
+            )
+            self._settings.setValue("camera/index", first)
+            return first
+
+        logger.warning("No cameras detected — will try index %d anyway", saved)
+        return saved
 
     def _build_worker(self, camera_index: int) -> CameraWorker:
         """Factory: สร้าง CameraWorker ใหม่ด้วย index ที่กำหนด"""
