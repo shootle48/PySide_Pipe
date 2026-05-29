@@ -50,10 +50,10 @@ from core.size_classifier import SizeClassifier
 from core.utils           import iso_to_local_str
 from ui.frame_widget          import FrameWidget
 from ui.db_viewer             import DbViewerDialog
-from ui.camera_select_dialog  import CameraSelectDialog
+from ui.camera_select_dialog  import CameraSelectDialog, scan_cameras
 from ui.maintenance_widget    import MaintenanceWidget
 from ui.batch_setup_dialog    import request_batch_setup
-from core.rs485_worker import RS485InputWorker, MockRS485DIO
+from core.rs485_worker import RS485InputWorker, RS485OutputWriter, MockRS485DIO, LoggingRS485DIO
 # Note: `rs485_dio` (real hardware) imports lazily — see _init_rs485() below
 # ไม่ import ตรงนี้เพราะต้องใช้ minimalmodbus/pyserial ที่ไม่มีบน Windows dev
 
@@ -67,10 +67,11 @@ RESULT_VIEW_SECS = 4           # seconds to show result before returning to live
 
 # RS485 I/O integration (trigger via external sensor/PLC)
 #   "off"  — ไม่ใช้ RS485 เลย (dev บน Windows ที่ไม่มี hardware)
-#   "mock" — ใช้ MockRS485DIO (test WFH — สุ่มยิง pulse ทุก 2s)
+#   "mock" — ใช้ MockRS485DIO (tes   t WFH — สุ่มยิง pulse ทุก 2s)
 #   "real" — ใช้ RS485DIO จริง (Jetson + USB-to-RS485 dongle)
 RS485_MODE       = "off"
-RS485_WATCH_BITS = [0]         # inputs ที่ watch (I0 = trigger sensor default)
+RS485_WATCH_BITS = [0] 
+RS485_NG_OUTPUT_BIT = 1        # inputs ที่ watch (I0 = trigger sensor default)
 
 
 class MainWindow(QMainWindow):
@@ -93,7 +94,7 @@ class MainWindow(QMainWindow):
 
         # ── Persisted settings ─────────────────────────────────────────────
         self._settings     = QSettings()   # uses app/org name from main.py
-        self._camera_index = int(self._settings.value("camera/index", CAMERA_INDEX))
+        self._camera_index = self._resolve_camera_index()
 
         # ── Backend singletons ─────────────────────────────────────────────
         self._db               = DatabaseManager()
@@ -160,7 +161,7 @@ class MainWindow(QMainWindow):
                 )
                 return
             try:
-                self._io_source = RS485DIO()
+                self._io_source = LoggingRS485DIO(RS485DIO())
             except (OSError, TypeError, ValueError) as exc:
                 logger.error(f"RS485: init failed ({exc}). Running without RS485 input.")
                 return
@@ -170,12 +171,24 @@ class MainWindow(QMainWindow):
             logger.warning(f"RS485: unknown mode '{RS485_MODE}' — disabled.")
             return
 
+        rs485_bus_lock = threading.Lock()
+
         self._io_worker = RS485InputWorker(
             io=self._io_source, watch_bits=RS485_WATCH_BITS,
+            bus_lock=rs485_bus_lock,
         )
         self._io_worker.pulse_detected.connect(self._on_rs485_pulse)
         self._io_worker.io_health_changed.connect(self._on_rs485_health)
         self._io_worker.start()
+
+        self._output_writer = RS485OutputWriter(
+            io=self._io_source,
+            ng_bit=RS485_NG_OUTPUT_BIT,
+            bus_lock=rs485_bus_lock,
+        )
+        self._worker.result_ready.connect(
+            lambda payload: self._output_writer.send_verdict(payload["verdict"])
+        )
 
     @Slot(int)
     def _on_rs485_pulse(self, bit: int) -> None:
@@ -190,6 +203,14 @@ class MainWindow(QMainWindow):
         else:
             logger.info("RS485: I/O online")
 
+    def _write_rs485_result(self, verdict:str) -> None:
+        if self._io_source is None:
+            return
+        is_ng = 0 if verdict =="NG" else 1
+        io = self._io_source
+    
+        def _do_write() -> None:
+                io.write_output(RS485_NG_OUTPUT_BIT, is_ng)
     # ══════════════════════════════════════════════════════════════════════
     # UI construction
     # ══════════════════════════════════════════════════════════════════════
@@ -558,6 +579,7 @@ class MainWindow(QMainWindow):
         self._prepend_history_row(result)
         self._flash_verdict(result["verdict"])
 
+        self._write_rs485_result(result["verdict"])
         self._capture_btn.setEnabled(True)
         self._capture_btn.setText("CAPTURE & INSPECT")
         self._upload_btn.setEnabled(True)
@@ -785,6 +807,34 @@ class MainWindow(QMainWindow):
         self._update_counters(state)
 
     # ── Camera management ─────────────────────────────────────────────────
+
+    def _resolve_camera_index(self) -> int:
+        """Return saved camera index if detected, else auto-select first available.
+
+        ลำดับ:
+          1. โหลด saved index จาก QSettings (default = CAMERA_INDEX constant)
+          2. Scan กล้องที่มีอยู่จริง (index 0-5)
+          3. ถ้า saved index ใช้ได้ → คืน index นั้น (พฤติกรรมเดิม)
+          4. ถ้าไม่ work → หยิบ index แรกที่เจอ + save ไว้
+          5. ถ้าไม่เจอกล้องเลย → คืน saved index (error จะขึ้นใน CameraWorker)
+        """
+        saved = int(self._settings.value("camera/index", CAMERA_INDEX))
+        available = scan_cameras()
+        available_indices = {c["index"] for c in available}
+
+        if saved in available_indices:
+            return saved   # กล้องที่บันทึกไว้ยังใช้ได้
+
+        if available:
+            first = available[0]["index"]
+            logger.info(
+                "Camera index %d not available — auto-selecting index %d", saved, first
+            )
+            self._settings.setValue("camera/index", first)
+            return first
+
+        logger.warning("No cameras detected — will try index %d anyway", saved)
+        return saved
 
     def _build_worker(self, camera_index: int) -> CameraWorker:
         """Factory: สร้าง CameraWorker ใหม่ด้วย index ที่กำหนด"""

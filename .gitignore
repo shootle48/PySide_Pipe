@@ -12,7 +12,7 @@ env/
 logs
 exports/
 data/
-Dataset_pipe
+DataSet
 tests/
 # Claude Code (local dev tools — don't share)
 .claude/

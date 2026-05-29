@@ -6,7 +6,62 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+# ── ตรวจ CUDA availability ครั้งเดียวตอน import ──────────────────────────────
+def _check_cuda() -> bool:
+    try:
+        return (
+            hasattr(cv2, "cuda") and
+            hasattr(cv2.cuda, "createHoughCirclesDetector") and
+            cv2.cuda.getCudaEnabledDeviceCount() > 0
+        )
+    except Exception:
+        return False
+
+
 class Detection:
+    # True  = Jetson + OpenCV with CUDA  → ใช้ GPU
+    # False = Windows dev / OpenCV ปกติ  → fallback CPU
+    _USE_CUDA: bool = _check_cuda()
+
+    _hough_outer: "cv2.cuda.HoughCirclesDetector | None" = None
+    _hough_inner: "cv2.cuda.HoughCirclesDetector | None" = None
+    _hough_inner_max_r: int = -1
+
+    # ── CUDA detector helpers (ใช้เฉพาะเมื่อ _USE_CUDA=True) ─────────────────
+
+    @classmethod
+    def _ensure_outer(cls) -> None:
+        if cls._hough_outer is None:
+            cls._hough_outer = cv2.cuda.createHoughCirclesDetector(
+                dp=1, minDist=4000,
+                cannyThreshold=150, votesThreshold=10,
+                minRadius=1, maxRadius=215,
+            )
+
+    @classmethod
+    def _ensure_inner(cls, max_r: int) -> None:
+        """สร้าง CUDA inner detector — skip ถ้า max_r ≤ minRadius (20)"""
+        if max_r <= 20:            # CUDA assertion: maxRadius > minRadius
+            cls._hough_inner       = None
+            cls._hough_inner_max_r = -1
+            return
+        if cls._hough_inner is None or cls._hough_inner_max_r != max_r:
+            cls._hough_inner = cv2.cuda.createHoughCirclesDetector(
+                dp=1, minDist=4000,
+                cannyThreshold=100, votesThreshold=15,
+                minRadius=20, maxRadius=max_r,
+            )
+            cls._hough_inner_max_r = max_r
+
+    @staticmethod
+    def _download_circles(gpu_mat: "cv2.cuda_GpuMat") -> "np.ndarray | None":
+        arr = gpu_mat.download()
+        if arr is None or arr.size == 0 or arr.shape[1] == 0:
+            return None
+        return arr
+
+    # ─────────────────────────────────────────────────────────────────────────
+
     def __init__(self, image):
         self.image = image
         self.verdict = "NG"   # default — overwritten by processing()
@@ -18,16 +73,17 @@ class Detection:
         clahe = cv2.createCLAHE(clipLimit=10.0, tileGridSize=(20, 20))
         enhanced = clahe.apply(blur_img)
 
-        circles = cv2.HoughCircles(
-            enhanced,
-            cv2.HOUGH_GRADIENT,
-            dp=1,
-            minDist=4000,
-            param1=150,
-            param2=10,
-            minRadius=1,
-            maxRadius=215,
-        )
+        # ── Outer circle ──────────────────────────────────────────────────────
+        if self._USE_CUDA:
+            self._ensure_outer()
+            gpu_enhanced = cv2.cuda_GpuMat()
+            gpu_enhanced.upload(enhanced)
+            circles = self._download_circles(self._hough_outer.detect(gpu_enhanced))
+        else:
+            circles = cv2.HoughCircles(
+                enhanced, cv2.HOUGH_GRADIENT, dp=1, minDist=4000,
+                param1=150, param2=10, minRadius=1, maxRadius=215,
+            )
 
         if circles is None:
             logger.warning("Detection: outer circle not found")
@@ -49,18 +105,37 @@ class Detection:
         cv2.circle(mask_inner_roi, (x, y), r_shrink, 255, -1)
         roi_inner = cv2.bitwise_and(roi, mask_inner_roi)
 
-        inner_circles = cv2.HoughCircles(
-            roi_inner,
-            cv2.HOUGH_GRADIENT,
-            dp=1,
-            minDist=4000,
-            param1=100,
-            param2=15,
-            minRadius=20,
-            maxRadius=int(r_shrink * 0.90),
-        )
+        # ── Inner circle ──────────────────────────────────────────────────────
+        max_r_inner = int(r_shrink * 0.90)
 
-        # fallback: ใช้ outer center และ 50% r_outer ถ้าหาวงในไม่เจอ
+        if self._USE_CUDA:
+            self._ensure_inner(max_r=max_r_inner)
+            if self._hough_inner is not None:
+                gpu_roi_inner = cv2.cuda_GpuMat()
+                gpu_roi_inner.upload(roi_inner)
+                inner_circles = self._download_circles(
+                    self._hough_inner.detect(gpu_roi_inner)
+                )
+            else:
+                inner_circles = None
+                logger.warning(
+                    "Detection: inner CUDA detector skipped (max_r=%d ≤ minRadius=20)",
+                    max_r_inner,
+                )
+        else:
+            if max_r_inner > 20:
+                inner_circles = cv2.HoughCircles(
+                    roi_inner, cv2.HOUGH_GRADIENT, dp=1, minDist=4000,
+                    param1=100, param2=15, minRadius=20, maxRadius=max_r_inner,
+                )
+            else:
+                inner_circles = None
+                logger.warning(
+                    "Detection: inner circle skipped (max_r=%d ≤ minRadius=20)",
+                    max_r_inner,
+                )
+
+        # ── fallback: ใช้ outer center และ 50% r_outer ถ้าหาวงในไม่เจอ ────────
         cx, cy = x, y
         r_inner = int(r_outer * 0.50)
 
@@ -92,7 +167,7 @@ class Detection:
         verdict = "NG" if defects else "OK"
         self.verdict = verdict
 
-        # ── Draw result on vis ────────────────────────────────────────────
+        # ── Draw result on vis ────────────────────────────────────────────────
         vis = self.image.copy()
         cv2.circle(vis, (x, y),   r_outer, (0, 255, 0), 2)
         cv2.circle(vis, (cx, cy), r_inner, (0, 0, 255), 2)

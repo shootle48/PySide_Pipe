@@ -81,7 +81,7 @@ def measure_import_time() -> float:
     """วัดเวลา import + สร้าง PipeInspector object"""
     import importlib, time
     t0 = time.perf_counter()
-    import pipeline as _p
+    from core import pipeline as _p
     inspector = _p.PipeInspector()
     elapsed = (time.perf_counter() - t0) * 1000
     return elapsed
