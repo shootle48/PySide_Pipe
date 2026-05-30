@@ -203,14 +203,6 @@ class MainWindow(QMainWindow):
         else:
             logger.info("RS485: I/O online")
 
-    def _write_rs485_result(self, verdict:str) -> None:
-        if self._io_source is None:
-            return
-        is_ng = 0 if verdict =="NG" else 1
-        io = self._io_source
-    
-        def _do_write() -> None:
-                io.write_output(RS485_NG_OUTPUT_BIT, is_ng)
     # ══════════════════════════════════════════════════════════════════════
     # UI construction
     # ══════════════════════════════════════════════════════════════════════
@@ -579,7 +571,6 @@ class MainWindow(QMainWindow):
         self._prepend_history_row(result)
         self._flash_verdict(result["verdict"])
 
-        self._write_rs485_result(result["verdict"])
         self._capture_btn.setEnabled(True)
         self._capture_btn.setText("CAPTURE & INSPECT")
         self._upload_btn.setEnabled(True)

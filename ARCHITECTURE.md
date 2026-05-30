@@ -60,7 +60,7 @@ CameraWorker loop               (worker thread)
     ├─ read frame from VideoCapture
     │
     ├─ t0 = perf_counter()
-    ├─ result = inspector.inspect(frame)   # YOLO
+    ├─ result = inspector.inspect(frame)  
     ├─ log "inference done in X ms"
     │
     ├─ batch_state.increment(verdict)      # seq++, total++
