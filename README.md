@@ -73,16 +73,3 @@ pipe-inspector-pyside/
 | [core/ Package](core/README.md) | Business logic layer |
 | [ui/ Package](ui/README.md) | UI components |
 
-## Performance (Jetson Orin Nano)
-
-| Version | RAM | Power (avg) |
-|---|---|---|
-| Web (FastAPI+JS) | ~3,450 MB | ~4,441 mW |
-| **PySide6 (this)** | **~3,314 MB** | **~4,359 mW** |
-| NiceGUI | ~3,394 MB | ~4,359 mW |
-
-PySide6 ใช้ทรัพยากรน้อยสุด → เลือกเป็น production version
-
----
-
-*Last updated: 2026-04-23 | Praram Nine Technology*
