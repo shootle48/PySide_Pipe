@@ -6,7 +6,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-# ── ตรวจ CUDA availability ครั้งเดียวตอน import ──────────────────────────────
+# ── ตรวจ CUDA availability ครั้งเดียวตอน imported ──────────────────────────────
 def _check_cuda() -> bool:
     try:
         return (
