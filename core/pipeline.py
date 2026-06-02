@@ -105,13 +105,13 @@ class PipeInspector:
     ) -> None:
         self.jpeg_quality = jpeg_quality
 
-    def inspect(self, frame_bgr: np.ndarray) -> dict:
+    def inspect(self, frame_bgr: np.ndarray, size: str = "L") -> dict:
         """
         Run Detection pipeline on one BGR frame.
         Returns a result dict compatible with CameraWorker signals.
         """
-        det = Detection(frame_bgr)
-        vis = det.processed_image   # BGR image ที่ Detection วาด bbox + verdict ลงแล้ว
+        det = Detection(frame_bgr, size=size)
+        vis = det.vis   # BGR image ที่ Detection วาด bbox + verdict ลงแล้ว
         verdict = det.verdict
 
         # encode vis → base64 JPEG (BGR → RGB ก่อน)
@@ -264,6 +264,7 @@ class CameraWorker(QThread):
             f"camera={self._camera_index} trigger={self._trigger_mode}"
         )
 
+        t0 = time.perf_counter()
         self._cap = cv2.VideoCapture(self._camera_index)
         if not self._cap.isOpened():
             msg = (
@@ -279,18 +280,17 @@ class CameraWorker(QThread):
         w   = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h   = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = self._cap.get(cv2.CAP_PROP_FPS)
-        logger.info(f"CameraWorker: {w}×{h} @ {fps:.0f}fps")
+        logger.info("CameraWorker: %dx%d @ %.0ffps | open=%.0f ms",
+                    w, h, fps, (time.perf_counter() - t0) * 1000)
 
-        # กล้องเปิดสำเร็จ → แจ้ง UI ให้ enable capture button
-        # (camera_health_changed ปกติ emit เฉพาะตอน recover จาก offline
-        #  แต่ถ้า switch กล้องมาจากสถานะ error จะไม่มีการ recover → ต้อง emit ตรงนี้ด้วย)
         self.camera_health_changed.emit(True)
 
         # Warmup — discard first 10 frames (exposure settling)
         logger.info("CameraWorker: warming up (10 frames)...")
+        t0 = time.perf_counter()
         for _ in range(10):
             self._cap.read()
-        logger.info("CameraWorker: warmup done.")
+        logger.info("CameraWorker: warmup done in %.0f ms", (time.perf_counter() - t0) * 1000)
 
         # ── Daemon threads for continuous frame reading and live emission ──
         read_thread = threading.Thread(
@@ -427,8 +427,9 @@ class CameraWorker(QThread):
         """
         self.status_changed.emit(WorkerStatus.PROCESSING)
         try:
+            size = self._batch_state.get_state().get("expected_size") or "L"
             t0 = time.perf_counter()
-            result = self._inspector.inspect(frame)
+            result = self._inspector.inspect(frame,size=size)
             result["inference_ms"] = (time.perf_counter() - t0) * 1000
             logger.info("CameraWorker: inference done in %.1f ms", result["inference_ms"])
             return result
@@ -438,9 +439,10 @@ class CameraWorker(QThread):
 
     def _persist_result(self, result: dict) -> dict:
         """Increment batch counter, write to DB, return enriched payload dict."""
-        batch_snapshot = self._batch_state.increment(result["verdict"])
-        timestamp = utcnow_iso()
+        t0 = time.perf_counter()
 
+        batch_snapshot    = self._batch_state.increment(result["verdict"])
+        timestamp         = utcnow_iso()
         internal_piece_id = str(self._db.get_next_piece_number())
 
         save_image = self._should_save_image(result["verdict"], batch_snapshot["id"])
@@ -455,6 +457,10 @@ class CameraWorker(QThread):
         )
         self._db.cleanup_old_data()
 
+        logger.info("CameraWorker: DB save %.0f ms (image=%s)",
+                    (time.perf_counter() - t0) * 1000,
+                    "yes" if save_image else "no")
+
         return {
             **result,
             "timestamp": timestamp,
@@ -466,22 +472,36 @@ class CameraWorker(QThread):
 
         Timeline: trigger → settle (0.3 s) → capture → inference → persist → emit
         """
+        t_cycle = time.perf_counter()
+
+        # settle + capture
+        t0    = time.perf_counter()
         frame = self._capture_frame()
+        t_cap = (time.perf_counter() - t0) * 1000
         if frame is None:
             self.status_changed.emit(WorkerStatus.IDLE)
             return
 
-        result = self._run_cv_inference(frame)
+        # CV inference
+        result    = self._run_cv_inference(frame)
+        t_infer   = result.get("inference_ms", 0) if result else 0
         if result is None:
             self.status_changed.emit(WorkerStatus.IDLE)
             return
 
+        # size check + DB save
         self._apply_size_check(result, frame.shape)
+        t0      = time.perf_counter()
         payload = self._persist_result(result)
+        t_db    = (time.perf_counter() - t0) * 1000
+
+        t_total = (time.perf_counter() - t_cycle) * 1000
         logger.info(
-            "CameraWorker: submitted | verdict=%s | detections=%d",
-            result["verdict"], len(result["detections"]),
+            "CameraWorker: submitted | verdict=%s | "
+            "settle+capture=%.0f  inference=%.0f  db=%.0f  TOTAL=%.0f ms",
+            result["verdict"], t_cap, t_infer, t_db, t_total,
         )
+
         self.result_ready.emit(payload)
         self.status_changed.emit(WorkerStatus.IDLE)
 

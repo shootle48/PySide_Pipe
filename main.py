@@ -96,11 +96,16 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
+    import time
+    t_launch = time.perf_counter()
+
     app = QApplication(sys.argv)
     app.setApplicationName("Pipe Inspector")
 
     try:
+        t0 = time.perf_counter()
         window = MainWindow()
+        logger.info("Startup: MainWindow init %.0f ms", (time.perf_counter() - t0) * 1000)
     except (RuntimeError, ImportError, OSError, ValueError) as exc:
         logger.critical("Startup failed: %s", exc, exc_info=True)
         QMessageBox.critical(
@@ -111,7 +116,7 @@ def main() -> None:
         sys.exit(1)
 
     window.show()
-    logger.info("Pipe Inspector (PySide6) started.")
+    logger.info("Startup: app ready in %.0f ms (total)", (time.perf_counter() - t_launch) * 1000)
     sys.exit(app.exec())
 
 
