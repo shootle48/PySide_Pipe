@@ -247,10 +247,10 @@ class RS485TestPanel(QWidget):
         self.status_label.setText("● INSPECTING...")
         self.status_label.setStyleSheet("color: #1565c0; font-weight: bold;")
         self._append_log(f"   ✓ TRIGGER detected (bit {bit})", "#2e7d32")
-        self._append_log("   ⏱  simulating inspection (500ms)...", "#52606d")
+        self._append_log("   ⏱  simulating inspection (100ms)...", "#52606d")
 
         # จำลอง inspection delay (ของจริงคือ PipeInspector.inspect)
-        QTimer.singleShot(500, self._simulate_inspection)
+        QTimer.singleShot(100, self._simulate_inspection)
 
     def _simulate_inspection(self) -> None:
         """แทน PipeInspector — สุ่ม OK/NG (60% OK, 40% NG)"""
