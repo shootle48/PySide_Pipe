@@ -26,7 +26,6 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from PySide6.QtCore    import Qt, QThread, Signal, Slot
 from PySide6.QtGui     import QColor, QFont, QImage, QPixmap
@@ -51,7 +50,7 @@ class DbViewerDialog(QDialog):
         dialog.exec()
     """
 
-    def __init__(self, db, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, db, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._db             = db
         self._current_batch  = None   # currently selected batch id
@@ -212,7 +211,7 @@ class DbViewerDialog(QDialog):
         self._preview_label.setMinimumHeight(160)
         preview_layout.addWidget(self._preview_label, stretch=1)
 
-        self._current_pixmap: Optional[QPixmap] = None
+        self._current_pixmap: QPixmap | None = None
 
         v_split.addWidget(preview_panel)
         v_split.setSizes([340, 200])
@@ -506,7 +505,7 @@ class DbViewerDialog(QDialog):
                     self._batch_list.setCurrentRow(i)
                     break
 
-    def _get_selected_piece_id(self) -> Optional[str]:
+    def _get_selected_piece_id(self) -> str | None:
         """Return piece_id ของ row ที่เลือกใน table หรือ None"""
         selected = self._table.selectedItems()
         if not selected:

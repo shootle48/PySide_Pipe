@@ -32,7 +32,6 @@ import logging
 import os
 import threading
 import time
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -55,7 +54,7 @@ TIMER_INTERVAL     = 6.0       # seconds between auto-triggers (timer mode)
 STREAM_FPS         = 20        # live view frame rate cap
 
 # ── OK Image Sampling Config ─────────────────────────────────────────────
-OK_SAMPLE_EVERY_N  = 50        # ทุก N ชิ้น OK ค่อย snap 1 รูป
+OK_SAMPLE_EVERY_N  = 10        # ทุก N ชิ้น OK ค่อย snap 1 รูป
 MAX_OK_NG_RATIO    = 1.5       # saved_OK / saved_NG ไม่เกินค่านี้ (ป้องกัน storage บวม)
 
 # ── Camera Health Monitor ────────────────────────────────────────────────
@@ -72,13 +71,13 @@ class FrameBuffer:
 
     def __init__(self) -> None:
         self._lock  = threading.Lock()
-        self._frame: Optional[np.ndarray] = None
+        self._frame: np.ndarray | None = None
 
     def update(self, frame_bgr: np.ndarray) -> None:
         with self._lock:
             self._frame = frame_bgr
 
-    def get_frame(self) -> Optional[np.ndarray]:
+    def get_frame(self) -> np.ndarray | None:
         with self._lock:
             return self._frame.copy() if self._frame is not None else None
 
@@ -101,7 +100,7 @@ class PipeInspector:
     def __init__(
         self,
         jpeg_quality: int = JPEG_QUALITY,
-        size_classifier=None,   # ยังรองรับ interface เดิม แต่ไม่ใช้แล้ว
+        # size_classifier=None,   # ยังรองรับ interface เดิม แต่ไม่ใช้แล้ว
     ) -> None:
         self.jpeg_quality = jpeg_quality
 
@@ -175,7 +174,7 @@ class CameraWorker(QThread):
         self._frame_buffer  = FrameBuffer()
         self._stop_event    = threading.Event()
         self._trigger_event = threading.Event()
-        self._cap: Optional[cv2.VideoCapture] = None
+        self._cap: cv2.VideoCapture | None = None
 
     # ── Size validation helper ─────────────────────────────────────────────
 
@@ -402,7 +401,7 @@ class CameraWorker(QThread):
 
     # ── Inspection cycle (broken into three focused methods) ─────────────────
 
-    def _capture_frame(self) -> Optional[np.ndarray]:
+    def _capture_frame(self) -> np.ndarray | None:
         """Wait for pipe to settle then grab the latest frame.
 
         Returns None if the buffer is empty or stop was requested during the delay.
@@ -419,7 +418,7 @@ class CameraWorker(QThread):
             logger.info("CameraWorker: frame captured %dx%d", frame.shape[1], frame.shape[0])
         return frame
 
-    def _run_cv_inference(self, frame: np.ndarray) -> Optional[dict]:
+    def _run_cv_inference(self, frame: np.ndarray) -> dict | None:
         """Run the CV pipeline on *frame*.
 
         Returns the result dict, or None on error (status is NOT reset here —

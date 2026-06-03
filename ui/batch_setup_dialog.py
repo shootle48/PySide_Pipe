@@ -31,7 +31,6 @@ Returns:
 
 from __future__ import annotations
 
-from typing import Optional
 
 from PySide6.QtCore    import QLocale, Qt, Signal
 from PySide6.QtGui     import QFont
@@ -52,7 +51,7 @@ class _SizeButton(QFrame):
 
     clicked = Signal(str)   # emit size key เช่น "L"
 
-    def __init__(self, size_key: str, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, size_key: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._size_key = size_key
         self.setCursor(Qt.PointingHandCursor)
@@ -101,7 +100,7 @@ class BatchSetupDialog(QDialog):
 
     def __init__(
         self,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
         default_size: str = "L",
         default_target: int = 0,
     ) -> None:
@@ -291,10 +290,10 @@ class BatchSetupDialog(QDialog):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def request_batch_setup(
-    parent: Optional[QWidget] = None,
+    parent: QWidget | None = None,
     default_size: str = "M",
     default_target: int = 0,
-) -> Optional[tuple[str, int]]:
+) -> tuple[str, int] | None:
     """
     เปิด BatchSetupDialog แล้ว return tuple (size, target) ถ้า user กด START
     หรือ None ถ้ากด CANCEL.

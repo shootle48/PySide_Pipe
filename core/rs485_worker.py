@@ -30,7 +30,7 @@ import logging
 import random
 import threading
 import time
-from typing import List, Optional, Protocol, Sequence
+from typing import Protocol, Sequence
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
@@ -53,7 +53,7 @@ logger = app_log
 
 class IOReader(Protocol):
     """สิ่งที่ RS485InputWorker คาดหวัง — RS485DIO จริงและ MockRS485DIO implement ทั้งคู่"""
-    def read_inputs(self, input_indices: Optional[Sequence[int]] = None) -> List[int]: ...
+    def read_inputs(self, input_indices: Sequence[int] | None = None) -> list[int]: ...
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -90,8 +90,8 @@ class MockRS485DIO(QObject):
         pulse_width_s: float = 0.1,
     ) -> None:
         super().__init__()
-        self._state:    List[int] = [0] * self.NUM_BITS   # input bits
-        self._outputs:  List[int] = [0] * self.NUM_BITS   # output bits
+        self._state:    list[int] = [0] * self.NUM_BITS   # input bits
+        self._outputs:  list[int] = [0] * self.NUM_BITS   # output bits
         self._lock = threading.Lock()
         self._mode = mode
         self._pulse_bit = pulse_bit
@@ -132,7 +132,7 @@ class MockRS485DIO(QObject):
                 self._state[self._pulse_bit] = 0
             smartsense_log.debug(f"MockRS485DIO: bit {self._pulse_bit} LOW")
 
-    def read_inputs(self, input_indices: Optional[Sequence[int]] = None) -> List[int]:
+    def read_inputs(self, input_indices: Sequence[int] | None = None) -> list[int]:
         """Duck-typed: เหมือน RS485DIO.read_inputs()"""
         with self._lock:
             if input_indices is None:
@@ -188,7 +188,7 @@ class MockRS485DIO(QObject):
         time.sleep(pulse_time)
         self.write_output(output_index, inactive)
 
-    def read_outputs(self, output_indices: Optional[Sequence[int]] = None) -> List[int]:
+    def read_outputs(self, output_indices: Sequence[int] | None = None) -> list[int]:
         """อ่านสถานะ output ปัจจุบัน (สำหรับ test/debug)"""
         with self._lock:
             if output_indices is None:
@@ -228,7 +228,7 @@ class RS485InputWorker(QThread):
     def __init__(
         self,
         io: IOReader,
-        watch_bits: List[int],
+        watch_bits: list[int],
         poll_interval_s: float = POLL_INTERVAL_S,
         debounce_ms: int = DEBOUNCE_MS,
     ) -> None:
@@ -247,7 +247,7 @@ class RS485InputWorker(QThread):
             f"| debounce={self._debounce_ms}ms"
         )
 
-        last_values: Optional[List[int]] = None
+        last_values: list[int] | None = None
         fail_count = 0
         is_offline = False
 
@@ -339,7 +339,7 @@ class RS485OutputWriter(QObject):
         ok_bit: int = 0,
         ng_bit: int = 1,
         pulse_ms: int = 200,
-        parent: Optional[QObject] = None,
+        parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._io = io
@@ -375,7 +375,7 @@ class RS485OutputWriter(QObject):
         """Worker function — ทำ write_pulse จริงใน background"""
         try:
             # หมายเหตุ: write_pulse เป็น call ลงไปยัง Smart-Sense library
-            #          ถ้า fail → log ที่ smartsense logger (ปัญหาฝั่งเขา)
+            #          ถ้า fail → log ที่ smartsense logger
             self._io.write_pulse(bit, pulse_time=self._pulse_s)
             app_log.info(f"verdict {verdict} sent to PLC (bit {bit})")
             self.write_complete.emit(verdict, True)

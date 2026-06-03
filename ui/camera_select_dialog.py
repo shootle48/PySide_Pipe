@@ -13,7 +13,6 @@ Dialog สำหรับ scan กล้องที่มีอยู่ใน�
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import cv2
 from PySide6.QtCore    import Qt, QThread, Signal
@@ -39,7 +38,7 @@ class _ScanWorker(QThread):
         self.found.emit(scan_cameras(skip=self._skip))
 
 
-def scan_cameras(skip: Optional[set] = None) -> list[dict]:
+def scan_cameras(skip: set | None = None) -> list[dict]:
     """
     สแกนกล้องใน index 0..MAX_SCAN_INDEX-1 → คืน list ของ dict
     {"index": int, "width": int, "height": int, "fps": float}
@@ -77,8 +76,8 @@ class CameraSelectDialog(QDialog):
         self.setMinimumWidth(400)
         self._current_index  = current_index
         self._camera_ok      = camera_ok
-        self._selected_index: Optional[int] = None
-        self._scan_worker: Optional[_ScanWorker] = None
+        self._selected_index: int | None = None
+        self._scan_worker: _ScanWorker | None = None
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -224,5 +223,5 @@ class CameraSelectDialog(QDialog):
         self._selected_index = item.data(Qt.UserRole)
         self.accept()
 
-    def selected_index(self) -> Optional[int]:
+    def selected_index(self) -> int | None:
         return self._selected_index

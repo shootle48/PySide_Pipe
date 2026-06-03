@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Optional
 
 from PySide6.QtCore    import QLocale, Qt, QSettings, QTimer, Slot
 from PySide6.QtGui     import QColor, QFont, QIcon
@@ -132,7 +131,7 @@ class MainWindow(QMainWindow):
         logger.info("CameraWorker started.")
 
         # ── Start RS485 input worker (optional) ────────────────────────────
-        self._io_worker: Optional[RS485InputWorker] = None
+        self._io_worker: RS485InputWorker | None = None
         self._io_source = None   # keep reference so GC doesn't kill mock
         self._init_rs485()
 
@@ -540,7 +539,7 @@ class MainWindow(QMainWindow):
 
     # ── Result display helpers ─────────────────────────────────────────────
 
-    def _update_inference_label(self, ms: Optional[float]) -> None:
+    def _update_inference_label(self, ms: float | None) -> None:
         """Colour-coded inference time indicator (green → orange → red)."""
         if ms is None:
             return

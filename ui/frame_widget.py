@@ -14,7 +14,6 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -55,9 +54,9 @@ class FrameWidget(QWidget):
     widget.show_placeholder("กดปุ่ม Capture เพื่อถ่ายภาพ")
     """
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._pixmap:     Optional[QPixmap] = None
+        self._pixmap:     QPixmap | None = None
         self._detections: list = []
         self._is_placeholder  = True
         self._placeholder_text = "กดปุ่ม Capture เพื่อถ่ายภาพและตรวจสอบ"

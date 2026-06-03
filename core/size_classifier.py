@@ -30,7 +30,6 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,7 @@ class SizeClassifier:
     จาก main thread เท่านั้น (เขียน QSettings)
     """
 
-    def __init__(self, thresholds: Optional[dict[str, tuple[int, int]]] = None) -> None:
+    def __init__(self, thresholds: dict[str, tuple[int, int]] | None = None) -> None:
         """
         Args:
             thresholds: ถ้าระบุ → ใช้ค่านี้
@@ -73,7 +72,7 @@ class SizeClassifier:
 
     # ── Public API ────────────────────────────────────────────────────────
 
-    def classify(self, radius_px: Optional[int]) -> str:
+    def classify(self, radius_px: int | None) -> str:
         """
         จำแนก radius เป็น size class
 

@@ -16,7 +16,6 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +110,7 @@ class DatabaseManager:
             row = self._conn.execute("SELECT COUNT(*) FROM inspections").fetchone()
         return (row[0] or 0) + 1
 
-    def get_active_batch(self) -> Optional[dict]:
+    def get_active_batch(self) -> dict | None:
         with self._lock:
             row = self._conn.execute(
                 """

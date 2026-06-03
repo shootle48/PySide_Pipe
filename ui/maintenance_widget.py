@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -53,11 +52,11 @@ class ClickableFrameView(QWidget):
     """
     image_clicked = Signal(int, int)   # (image_x, image_y)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._pixmap: Optional[QPixmap] = None
-        self._image_size: Optional[Tuple[int, int]] = None   # (w, h)
-        self._zone_points: List[Tuple[int, int]] = []        # in image coords
+        self._pixmap: QPixmap | None = None
+        self._image_size: tuple[int, int] | None = None   # (w, h)
+        self._zone_points: list[tuple[int, int]] = []        # in image coords
         self._collecting: bool = False
         self._drift_color: QColor = QColor("#00e676")        # green=stable, red=drifted
         self._last_scaled_info = (0, 0, 0, 0, 1.0, 1.0)      # x_off, y_off, w, h, sx, sy
@@ -77,7 +76,7 @@ class ClickableFrameView(QWidget):
         self._pixmap = QPixmap.fromImage(qimg.copy())   # .copy() since frame buffer reused
         self.update()
 
-    def set_zone(self, points: List[Tuple[int, int]]) -> None:
+    def set_zone(self, points: list[tuple[int, int]]) -> None:
         self._zone_points = list(points)
         self.update()
 
@@ -185,13 +184,13 @@ class MaintenanceWidget(QWidget):
     # float = drift score ณ ขณะนั้น (0.0 ถ้า stable/reset)
     drift_status_changed = Signal(str, float)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._settings = QSettings()
-        self._zone_points: List[Tuple[int, int]] = []
-        self._reference_gray: Optional[np.ndarray] = None   # masked gray ref
-        self._mask: Optional[np.ndarray] = None              # binary mask for zone
-        self._latest_frame: Optional[np.ndarray] = None
+        self._zone_points: list[tuple[int, int]] = []
+        self._reference_gray: np.ndarray | None = None   # masked gray ref
+        self._mask: np.ndarray | None = None              # binary mask for zone
+        self._latest_frame: np.ndarray | None = None
         self._threshold: int = DEFAULT_THRESHOLD
         self._status = self.STATUS_IDLE
         self._frame_counter: int = 0
@@ -475,7 +474,7 @@ class MaintenanceWidget(QWidget):
 
     # ── Reference + drift ──────────────────────────────────────────────────
 
-    def _build_mask(self, shape: Tuple[int, int]) -> Optional[np.ndarray]:
+    def _build_mask(self, shape: Tuple[int, int]) -> np.ndarray | None:
         """Build binary mask (255 inside zone, 0 outside)."""
         if len(self._zone_points) != 4:
             return None
