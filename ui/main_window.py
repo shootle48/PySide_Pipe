@@ -69,8 +69,13 @@ RESULT_VIEW_SECS = 4           # seconds to show result before returning to live
 #   "mock" — ใช้ MockRS485DIO (tes   t WFH — สุ่มยิง pulse ทุก 2s)
 #   "real" — ใช้ RS485DIO จริง (Jetson + USB-to-RS485 dongle)
 RS485_MODE       = "off"
-RS485_WATCH_BITS = [0] 
+RS485_WATCH_BITS = [0]
 RS485_NG_OUTPUT_BIT = 1        # inputs ที่ watch (I0 = trigger sensor default)
+
+# Detection threshold config (MA Mode)
+#   "off" — ซ่อน slider ใน Reset Batch dialog (default สำหรับลูกค้า)
+#   "on"  — แสดง slider ให้ MA ปรับ min_defect_area per size ได้
+DETECTION_THRESHOLD_MODE = "on"
 
 
 class MainWindow(QMainWindow):
@@ -993,9 +998,10 @@ class MainWindow(QMainWindow):
         """
         current = self._batch_state.get_state()
         result = request_batch_setup(
-            parent         = self,
-            default_size   = current.get("expected_size") or "L",
-            default_target = current.get("expected_total", 0),
+            parent          = self,
+            default_size    = current.get("expected_size") or "L",
+            default_target  = current.get("expected_total", 0),
+            threshold_mode  = DETECTION_THRESHOLD_MODE,
         )
         if result is None:
             return   # user cancelled

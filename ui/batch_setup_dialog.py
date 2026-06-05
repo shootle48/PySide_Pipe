@@ -2,6 +2,7 @@
 batch_setup_dialog.py
 ─────────────────────
 Custom dialog สำหรับเริ่ม batch ใหม่ — เลือกขนาด (L/M/S) + Target
++ (MA Mode) slider ปรับ min_defect_area per size
 
 แทน QInputDialog.getInt() แบบเดิมที่ถาม Target อย่างเดียว
 ใช้ใน main_window._reset_batch()
@@ -15,6 +16,10 @@ Layout (touch-friendly สำหรับ factory):
 │  │  1   │  │  2   │  │  3   │                │
 │  │Large │  │Medium│  │Small │                │
 │  └──────┘  └──────┘  └──────┘                │
+│                                              │
+│  [MA Mode] ความไวการตรวจจับ defect:           │
+│  เข้มงวด ◄════●══════════════════► หละหลวม   │
+│                   750 px²  (~2.7%)  [Default]│
 │                                              │
 │  จำนวนเป้าหมาย (Target):                       │
 │  [           50          ] ↕                  │
@@ -31,12 +36,13 @@ Returns:
 
 from __future__ import annotations
 
+import math
 
-from PySide6.QtCore    import QLocale, Qt, Signal
+from PySide6.QtCore    import QLocale, QSettings, Qt, Signal
 from PySide6.QtGui     import QFont
 from PySide6.QtWidgets import (
-    QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QSpinBox,
-    QVBoxLayout, QWidget,
+    QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QSlider,
+    QSpinBox, QVBoxLayout, QWidget,
 )
 
 
@@ -44,6 +50,45 @@ from PySide6.QtWidgets import (
 SIZE_OPTIONS = ("L", "M", "S")
 SIZE_LABELS  = {"L": "Large", "M": "Medium", "S": "Small"}
 SIZE_NUMBERS = {"L": "1",     "M": "2",      "S": "3"}
+
+# ค่า r_inner เฉลี่ย (px) ต่อ size — ใช้คำนวณ % พื้นที่วงใน
+# ดูจาก SIZE_DEF ใน Detection.py: เฉลี่ย (minRadius + maxRadius) / 2
+_INNER_RADIUS_PX: dict[str, int] = {"L": 95, "M": 67, "S": 42}
+
+# Default และ range ของ slider
+_THRESHOLD_DEFAULT = 500   # px²
+_THRESHOLD_MIN     = 50
+_THRESHOLD_MAX     = 5000
+_THRESHOLD_STEP    = 50
+
+# QSettings key template
+_SETTINGS_KEY = "detection/min_defect_area/{}"
+
+
+def _load_threshold(size: str) -> int:
+    """โหลด min_defect_area สำหรับ size นี้จาก QSettings (fallback default)"""
+    s = QSettings()
+    key = _SETTINGS_KEY.format(size)
+    if s.contains(key):
+        return int(s.value(key))
+    return _THRESHOLD_DEFAULT
+
+
+def _save_threshold(size: str, value: int) -> None:
+    """บันทึก min_defect_area ลง QSettings"""
+    QSettings().setValue(_SETTINGS_KEY.format(size), value)
+
+
+def _reset_threshold(size: str) -> None:
+    """ลบ override ออก → Detection จะใช้ default"""
+    QSettings().remove(_SETTINGS_KEY.format(size))
+
+
+def _area_to_pct(area_px2: int, size: str) -> float:
+    """คำนวณ % ของพื้นที่วงใน"""
+    r = _INNER_RADIUS_PX.get(size, 67)
+    inner_area = math.pi * r * r
+    return area_px2 / inner_area * 100
 
 
 class _SizeButton(QFrame):
@@ -96,13 +141,14 @@ class _SizeButton(QFrame):
 
 
 class BatchSetupDialog(QDialog):
-    """Touch-friendly batch setup dialog (size + target)"""
+    """Touch-friendly batch setup dialog (size + target + optional MA threshold)"""
 
     def __init__(
         self,
         parent: QWidget | None = None,
         default_size: str = "L",
         default_target: int = 0,
+        threshold_mode: str = "off",   # "off" = ซ่อน slider / "on" = แสดง
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Start New Batch")
@@ -111,10 +157,15 @@ class BatchSetupDialog(QDialog):
 
         self._selected_size: str = default_size if default_size in SIZE_OPTIONS else "L"
         self._size_buttons: dict[str, _SizeButton] = {}
+        self._threshold_mode = threshold_mode
 
         self._build_ui(default_target=default_target)
         self._apply_styles()
         self._highlight_size(self._selected_size)
+
+        # โหลดค่า threshold เริ่มต้นสำหรับ size ที่เลือก
+        if threshold_mode == "on":
+            self._load_slider_for_size(self._selected_size)
 
     # ── Public API ─────────────────────────────────────────────────────────
 
@@ -153,6 +204,57 @@ class BatchSetupDialog(QDialog):
             size_row.addWidget(btn)
         root.addLayout(size_row)
 
+        # ── Threshold slider (MA Mode) ─────────────────────────────────
+        self._threshold_frame = QFrame()
+        self._threshold_frame.setObjectName("thresholdFrame")
+        th_layout = QVBoxLayout(self._threshold_frame)
+        th_layout.setContentsMargins(12, 10, 12, 10)
+        th_layout.setSpacing(6)
+
+        # Header row
+        th_header = QHBoxLayout()
+        th_title = QLabel("ความไวการตรวจจับ defect  [MA Mode]")
+        th_title.setObjectName("sectionLabel")
+        th_header.addWidget(th_title)
+        th_header.addStretch()
+        self._default_btn = QPushButton("Default")
+        self._default_btn.setObjectName("defaultBtn")
+        self._default_btn.setFixedHeight(28)
+        self._default_btn.clicked.connect(self._on_reset_threshold)
+        th_header.addWidget(self._default_btn)
+        th_layout.addLayout(th_header)
+
+        # Slider row
+        slider_row = QHBoxLayout()
+        lbl_strict = QLabel("เข้มงวด")
+        lbl_strict.setObjectName("dimLabel")
+        slider_row.addWidget(lbl_strict)
+
+        self._threshold_slider = QSlider(Qt.Horizontal)
+        self._threshold_slider.setRange(_THRESHOLD_MIN, _THRESHOLD_MAX)
+        self._threshold_slider.setSingleStep(_THRESHOLD_STEP)
+        self._threshold_slider.setPageStep(_THRESHOLD_STEP * 5)
+        self._threshold_slider.setValue(_THRESHOLD_DEFAULT)
+        self._threshold_slider.setFixedHeight(36)
+        self._threshold_slider.valueChanged.connect(self._on_slider_changed)
+        slider_row.addWidget(self._threshold_slider, stretch=1)
+
+        lbl_loose = QLabel("หละหลวม")
+        lbl_loose.setObjectName("dimLabel")
+        slider_row.addWidget(lbl_loose)
+        th_layout.addLayout(slider_row)
+
+        # Value label
+        self._threshold_value_label = QLabel()
+        self._threshold_value_label.setObjectName("thresholdValue")
+        self._threshold_value_label.setAlignment(Qt.AlignCenter)
+        th_layout.addWidget(self._threshold_value_label)
+
+        root.addWidget(self._threshold_frame)
+
+        # ซ่อน threshold section ถ้า mode="off"
+        self._threshold_frame.setVisible(self._threshold_mode == "on")
+
         # Target input
         target_label = QLabel("จำนวนเป้าหมาย (Target)  —  0 = ไม่ระบุ")
         target_label.setObjectName("sectionLabel")
@@ -186,16 +288,61 @@ class BatchSetupDialog(QDialog):
         self._ok_btn.setFixedHeight(56)
         self._ok_btn.setMinimumWidth(160)
         self._ok_btn.setDefault(True)
-        self._ok_btn.clicked.connect(self.accept)
+        self._ok_btn.clicked.connect(self._on_accept)
         btn_row.addWidget(self._ok_btn)
 
         root.addLayout(btn_row)
+
+        # อัปเดต label ค่าเริ่มต้น
+        self._update_value_label(_THRESHOLD_DEFAULT)
+
+    # ── Threshold helpers ──────────────────────────────────────────────────
+
+    def _load_slider_for_size(self, size: str) -> None:
+        """โหลดค่า QSettings ของ size นี้แล้วตั้ง slider"""
+        val = _load_threshold(size)
+        self._threshold_slider.blockSignals(True)
+        self._threshold_slider.setValue(val)
+        self._threshold_slider.blockSignals(False)
+        self._update_value_label(val)
+
+    def _update_value_label(self, value: int) -> None:
+        """อัปเดต label แสดง px² + % พื้นที่วงใน"""
+        pct = _area_to_pct(value, self._selected_size)
+        self._threshold_value_label.setText(
+            f"{value} px²   (~{pct:.1f}% ของพื้นที่วงใน)"
+        )
 
     # ── Slots ─────────────────────────────────────────────────────────────
 
     def _on_size_clicked(self, size: str) -> None:
         self._selected_size = size
         self._highlight_size(size)
+        # อัปเดต slider เป็นค่าของ size ที่เลือก
+        if self._threshold_mode == "on":
+            self._load_slider_for_size(size)
+
+    def _on_slider_changed(self, value: int) -> None:
+        # snap ให้เป็น step
+        snapped = round(value / _THRESHOLD_STEP) * _THRESHOLD_STEP
+        snapped = max(_THRESHOLD_MIN, min(_THRESHOLD_MAX, snapped))
+        if snapped != value:
+            self._threshold_slider.blockSignals(True)
+            self._threshold_slider.setValue(snapped)
+            self._threshold_slider.blockSignals(False)
+        self._update_value_label(snapped)
+
+    def _on_reset_threshold(self) -> None:
+        """รีเซ็ตค่า size ปัจจุบันกลับ default"""
+        _reset_threshold(self._selected_size)
+        self._threshold_slider.setValue(_THRESHOLD_DEFAULT)
+        self._update_value_label(_THRESHOLD_DEFAULT)
+
+    def _on_accept(self) -> None:
+        """บันทึก threshold ลง QSettings แล้ว accept"""
+        if self._threshold_mode == "on":
+            _save_threshold(self._selected_size, self._threshold_slider.value())
+        self.accept()
 
     def _highlight_size(self, size: str) -> None:
         """อัพ visual state ให้ปุ่มขนาดที่เลือกเป็น active"""
@@ -222,6 +369,10 @@ class BatchSetupDialog(QDialog):
                 font-size: 13px;
                 color: #52606d;
                 font-weight: bold;
+            }
+            #dimLabel {
+                font-size: 11px;
+                color: #7b8794;
             }
             /* ── Size button (QFrame) ── */
             #sizeBtn {
@@ -253,6 +404,46 @@ class BatchSetupDialog(QDialog):
                 font-weight: normal;
                 color: #52606d;
             }
+            /* ── Threshold frame ── */
+            #thresholdFrame {
+                background: transparent;
+                border: none;
+            }
+            #thresholdValue {
+                font-family: "Consolas", monospace;
+                font-size: 13px;
+                font-weight: bold;
+                color: #1565c0;
+            }
+            #defaultBtn {
+                background: #ffffff;
+                color: #52606d;
+                border: 1px solid #a8b0ba;
+                border-radius: 5px;
+                font-size: 11px;
+                padding: 2px 8px;
+            }
+            #defaultBtn:hover { background: #f1f3f6; }
+            /* ── Slider ── */
+            QSlider::groove:horizontal {
+                height: 6px;
+                background: #dde1e7;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                width: 22px;
+                height: 22px;
+                margin: -8px 0;
+                border-radius: 11px;
+                background: #1565c0;
+                border: 2px solid #0d47a1;
+            }
+            QSlider::handle:horizontal:hover { background: #1976d2; }
+            QSlider::sub-page:horizontal {
+                background: #1565c0;
+                border-radius: 3px;
+            }
+            /* ── Target spin ── */
             #targetSpin {
                 background: #ffffff;
                 border: 2px solid #cbd1d9;
@@ -293,10 +484,13 @@ def request_batch_setup(
     parent: QWidget | None = None,
     default_size: str = "M",
     default_target: int = 0,
+    threshold_mode: str = "off",
 ) -> tuple[str, int] | None:
     """
     เปิด BatchSetupDialog แล้ว return tuple (size, target) ถ้า user กด START
     หรือ None ถ้ากด CANCEL.
+
+    threshold ถูกบันทึกลง QSettings อัตโนมัติเมื่อกด START (ถ้า mode="on")
 
     ตัวอย่าง:
         result = request_batch_setup(self, default_size="M", default_target=50)
@@ -305,7 +499,12 @@ def request_batch_setup(
         size, target = result
         self._batch_state.reset(expected_total=target, expected_size=size)
     """
-    dlg = BatchSetupDialog(parent=parent, default_size=default_size, default_target=default_target)
+    dlg = BatchSetupDialog(
+        parent=parent,
+        default_size=default_size,
+        default_target=default_target,
+        threshold_mode=threshold_mode,
+    )
     if dlg.exec() != QDialog.Accepted:
         return None
     return dlg.selected_size, dlg.selected_target

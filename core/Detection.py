@@ -3,6 +3,11 @@ import time
 import cv2
 import numpy as np
 
+try:
+    from PySide6.QtCore import QSettings as _QSettings
+except ImportError:
+    _QSettings = None   # test environment ที่ไม่มี Qt
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,8 +69,22 @@ class Detection:
             raise ValueError(f"size must be one of {self.VALID_SIZES}, got '{size}'")
 
         self.image = image
-        self.size = size
-        self.cfg    = SIZE_DEF[size]
+        self.size  = size
+        self.cfg   = dict(SIZE_DEF[size])   # copy เพื่อไม่ mutate global
+
+        # ── QSettings override สำหรับ min_defect_area (MA Mode) ──────────
+        self._threshold_source = "default"
+        if _QSettings is not None:
+            _s   = _QSettings()
+            _key = f"detection/min_defect_area/{size}"
+            if _s.contains(_key):
+                self.cfg["min_defect_area"] = int(_s.value(_key))
+                self._threshold_source = "QSettings override"
+        logger.debug(
+            "Detection [%s]: min_defect_area=%d (%s)",
+            size, self.cfg["min_defect_area"], self._threshold_source,
+        )
+
         self.success             = False
         self.error               = None
         self.verdict             = None
@@ -199,11 +218,13 @@ class Detection:
 
         # ── Summary log ───────────────────────────────────────────────────
         t_total = _ms(t_all)
+        _thr_src = "override" if self._threshold_source == "QSettings override" else "default"
         logger.info(
-            "Detection [%s]: %s | defects=%d | "
+            "Detection [%s]: %s | defects=%d | min_defect_area=%d (%s) | "
             "pre=%.1f  outer=%.1f  inner=%.1f  thresh=%.1f  morph=%.1f  contour=%.1f  draw=%.1f  "
             "TOTAL=%.1f ms",
             self.size, verdict, len(defects),
+            self.cfg["min_defect_area"], _thr_src,
             t_pre, t_outer, t_inner, t_thresh, t_morph, t_contour, t_draw,
             t_total,
         )
