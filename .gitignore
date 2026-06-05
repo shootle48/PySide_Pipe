@@ -14,6 +14,7 @@ exports/
 data/
 DataSet
 tests/
+docs/
 # Claude Code (local dev tools — don't share)
 .claude/
 DEPLOYMENT.md
