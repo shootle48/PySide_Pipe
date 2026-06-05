@@ -110,6 +110,14 @@ class DatabaseManager:
             row = self._conn.execute("SELECT COUNT(*) FROM inspections").fetchone()
         return (row[0] or 0) + 1
 
+    def batch_exists(self, batch_id: str) -> bool:
+        """ตรวจว่า batch_id ยังมีอยู่ใน DB (ไม่ถูกลบ)"""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM batches WHERE id = ?", (batch_id,)
+            ).fetchone()
+        return row is not None
+
     def get_active_batch(self) -> dict | None:
         with self._lock:
             row = self._conn.execute(

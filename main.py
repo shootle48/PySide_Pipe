@@ -115,7 +115,7 @@ def main() -> None:
         )
         sys.exit(1)
 
-    window.show()
+    window.showFullScreen()
     logger.info("Startup: app ready in %.0f ms (total)", (time.perf_counter() - t_launch) * 1000)
     sys.exit(app.exec())
 

@@ -795,6 +795,16 @@ class MainWindow(QMainWindow):
         # Sync in-memory batch state กลับจาก DB หลัง DB Viewer อาจลบ record ไป
         state = self._batch_state.sync_from_db()
         self._update_counters(state)
+        # ถ้า batch ปัจจุบันถูกลบ → block capture + แจ้งเตือน
+        if not self._db.batch_exists(state["id"]):
+            self._capture_btn.setEnabled(False)
+            self._capture_btn.setText("CAPTURE & INSPECT")
+            QMessageBox.warning(
+                self,
+                "Batch ถูกลบ",
+                f"Batch ปัจจุบัน ({state['id']}) ถูกลบออกจาก Database\n\n"
+                "กรุณากด 'Reset Batch' เพื่อสร้าง Batch ใหม่ก่อนตรวจต่อ",
+            )
 
     # ── Camera management ─────────────────────────────────────────────────
 
@@ -1000,6 +1010,9 @@ class MainWindow(QMainWindow):
         self._frame_widget.show_placeholder(
             f"Batch ใหม่ (size={size}, target={target}) — กดปุ่ม Capture เพื่อเริ่ม"
         )
+        # คืนปุ่ม capture (อาจถูก disable ตอน batch ก่อนหน้าถูกลบ)
+        if self._camera_online and not self._upload_mode:
+            self._capture_btn.setEnabled(True)
 
     def _set_expected(self) -> None:
         """เปลี่ยน target ของ batch ปัจจุบันโดยไม่ reset."""

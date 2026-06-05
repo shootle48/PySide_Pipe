@@ -176,7 +176,7 @@ class DbViewerDialog(QDialog):
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.setAlternatingRowColors(True)
         self._table.verticalHeader().setVisible(False)
-        self._table.setColumnWidth(0, 180)
+        self._table.setColumnWidth(0, 60)
         self._table.setColumnWidth(1, 80)
         self._table.setColumnWidth(2, 60)    # Size
         self._table.setColumnWidth(3, 140)   # Defects
@@ -307,7 +307,11 @@ class DbViewerDialog(QDialog):
             row_idx = self._table.rowCount()
             self._table.insertRow(row_idx)
 
-            self._set_cell(row_idx, 0, row_data["piece_id"])
+            no_item = QTableWidgetItem(str(row_idx + 1))
+            no_item.setFont(QFont(MONO_FONT, 12))
+            no_item.setTextAlignment(Qt.AlignCenter)
+            no_item.setData(Qt.UserRole, row_data["piece_id"])  # เก็บ piece_id ไว้ใช้ delete/clear
+            self._table.setItem(row_idx, 0, no_item)
 
             # Verdict — coloured using shared palette
             verdict = row_data["verdict"]
@@ -510,7 +514,7 @@ class DbViewerDialog(QDialog):
         selected = self._table.selectedItems()
         if not selected:
             return None
-        return self._table.item(self._table.row(selected[0]), 0).text()
+        return self._table.item(self._table.row(selected[0]), 0).data(Qt.UserRole)
 
     @Slot()
     def _clear_selected_image(self) -> None:

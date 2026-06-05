@@ -30,6 +30,7 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import sqlite3
 import threading
 import time
 
@@ -170,7 +171,7 @@ class CameraWorker(QThread):
         self._trigger_mode   = trigger_mode
         self._timer_interval = timer_interval
 
-        self._inspector     = PipeInspector(size_classifier=size_classifier)
+        self._inspector     = PipeInspector()
         self._frame_buffer  = FrameBuffer()
         self._stop_event    = threading.Event()
         self._trigger_event = threading.Event()
@@ -490,9 +491,21 @@ class CameraWorker(QThread):
 
         # size check + DB save
         self._apply_size_check(result, frame.shape)
-        t0      = time.perf_counter()
-        payload = self._persist_result(result)
-        t_db    = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        try:
+            payload = self._persist_result(result)
+        except sqlite3.IntegrityError:
+            logger.error(
+                "CameraWorker: batch '%s' ไม่มีใน DB (ถูกลบ) — กรุณา Reset Batch",
+                self._batch_state.get_state()["id"],
+            )
+            self.error_occurred.emit(
+                "Batch ปัจจุบันถูกลบออกจาก Database\n\n"
+                "กรุณากด 'Reset Batch' เพื่อสร้าง Batch ใหม่ก่อนตรวจต่อ"
+            )
+            self.status_changed.emit(WorkerStatus.IDLE)
+            return
+        t_db = (time.perf_counter() - t0) * 1000
 
         t_total = (time.perf_counter() - t_cycle) * 1000
         logger.info(
