@@ -75,7 +75,7 @@ RS485_NG_OUTPUT_BIT = 1        # inputs ที่ watch (I0 = trigger sensor def
 # Detection threshold config (MA Mode)
 #   "off" — ซ่อน slider ใน Reset Batch dialog (default สำหรับลูกค้า)
 #   "on"  — แสดง slider ให้ MA ปรับ min_defect_area per size ได้
-DETECTION_THRESHOLD_MODE = "off"
+DETECTION_THRESHOLD_MODE = "on"
 
 
 class MainWindow(QMainWindow):

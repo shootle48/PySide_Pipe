@@ -36,9 +36,9 @@ import time
 
 import cv2
 import numpy as np
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QSettings, QThread, Signal
 
-from core.Detection import Detection
+from core.Detection import Detection, SIZE_DEF
 
 from core.constants import TriggerMode, Verdict, WorkerStatus
 from core.utils import utcnow_iso
@@ -110,15 +110,19 @@ class PipeInspector:
         Run Detection pipeline on one BGR frame.
         Returns a result dict compatible with CameraWorker signals.
         """
-        # ── TODO (ทีม): wire threshold_pct เข้า Detection ──────────────────
-        # ค่า pct (area_px2 / inner_area * 100) ถูกเก็บไว้ใน QSettings โดย
-        # batch_setup_dialog แล้ว — uncomment 3 บรรทัดนี้ + เพิ่ม param ใน
-        # Detection.__init__(image, size, threshold_pct=None) เมื่อพร้อมใช้
-        # from PySide6.QtCore import QSettings
-        # _pct = QSettings().value(f"detection/threshold_pct/{size}", None)
-        # _pct = float(_pct) if _pct is not None else None
-        # det = Detection(frame_bgr, size=size, threshold_pct=_pct)
-        det = Detection(frame_bgr, size=size)
+        # defthresh (min defect area px²) — MA ตั้งผ่าน slider ใน batch_setup_dialog
+        # เก็บที่ QSettings "detection/min_defect_area/{size}"
+        #   - มี key (MA ตั้งไว้ รวมถึง 0) → ใช้ค่านั้น
+        #   - ไม่มี key (production ไม่เคยตั้ง) → fallback ค่า default ของ SIZE_DEF
+        #     (ห้าม default 0 เพราะ area >= 0 = NG ทุกชิ้น)
+        _default = int(SIZE_DEF.get(size.upper(), {}).get("min_defect_area", 500))
+        _defthresh = QSettings().value(f"detection/min_defect_area/{size}", _default)
+        try:
+            _defthresh = int(_defthresh)
+        except (TypeError, ValueError):
+            _defthresh = _default
+
+        det = Detection(frame_bgr, size=size, defthresh=_defthresh)
         vis = det.vis   # BGR image ที่ Detection วาด bbox + verdict ลงแล้ว
         verdict = det.verdict
 

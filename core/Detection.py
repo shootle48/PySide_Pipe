@@ -185,7 +185,7 @@ class Detection:
             self.error   = f"[Size {self.size}] No Pipe Detected"
             self.verdict = "NG"
             cv2.putText(self.vis, self.error,
-                        (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+                        (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2)
             logger.info(
                 "Detection [%s] timing | pre=%.1f  outer=%.1f  TOTAL=%.1f ms",
                 self.size, t_pre, t_outer, _ms(t_all),
@@ -214,7 +214,7 @@ class Detection:
             if DEBUG_DRAW:   # วงนอกเจอ — โชว์ไว้ debug ว่า inner fail ตรงไหน
                 cv2.circle(self.vis, (x, y), r_outer, (0, 255, 0), 2)
             cv2.putText(self.vis, self.error,
-                        (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+                        (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2)
             logger.info(
                 "Detection [%s] timing | pre=%.1f  outer=%.1f  inner=%.1f  TOTAL=%.1f ms",
                 self.size, t_pre, t_outer, t_inner, _ms(t_all),
@@ -282,29 +282,28 @@ class Detection:
         # ── 7. Draw ───────────────────────────────────────────────────────
         t = time.perf_counter()
         vis = self.image.copy()
-        cv2.circle(vis, (x,  y),  r_outer, (0, 255, 0), 2)
-        cv2.circle(vis, (cx, cy), r_inner, (255, 0, 0), 2)
+        if DEBUG_DRAW:   # วงกลม debug เฉพาะ MA mode (ลูกค้าไม่เห็นใน production)
+            cv2.circle(vis, (x,  y),  r_outer, (0, 255, 0), 2)   # วงนอก = เขียว
+            cv2.circle(vis, (cx, cy), r_inner, (255, 0, 0), 2)   # วงใน  = น้ำเงิน
 
         for c in defects:
             bx, by, bw, bh = cv2.boundingRect(c)
-            cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (0, 0, 255), 2)
+            cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (255, 0, 0), 2)
             cv2.putText(vis, "Defect", (bx, by - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-        color = (0, 0, 255) if verdict == "NG" else (0, 200, 0)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+        color = (255, 0, 0) if verdict == "NG" else (0, 200, 0)
         cv2.putText(vis, verdict, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
         self.vis     = vis
         self.success = True
         t_draw = _ms(t)
 
-        # ── Summary log ───────────────────────────────────────────────────
+        # ── Summary log (timing breakdown) ─────────────────────────────────
         t_total = _ms(t_all)
-        # _thr_src = "override" if self._threshold_source == "QSettings override" else "default"
         logger.info(
-            "Detection [%s]: %s | defects=%d | min_defect_area=%d (%s) | "
+            "Detection [%s] timing | "
             "pre=%.1f  outer=%.1f  inner=%.1f  thresh=%.1f  morph=%.1f  contour=%.1f  draw=%.1f  "
             "TOTAL=%.1f ms",
-            self.size, verdict, len(defects),
-            # self.cfg["min_defect_area"], _thr_src,
+            self.size,
             t_pre, t_outer, t_inner, t_thresh, t_morph, t_contour, t_draw,
             t_total,
         )
