@@ -56,13 +56,14 @@ SIZE_NUMBERS = {"L": "1",     "M": "2",      "S": "3"}
 _INNER_RADIUS_PX: dict[str, int] = {"L": 95, "M": 67, "S": 42}
 
 # Default และ range ของ slider
-_THRESHOLD_DEFAULT = 500   # px²
-_THRESHOLD_MIN     = 50
-_THRESHOLD_MAX     = 5000
-_THRESHOLD_STEP    = 50
+_THRESHOLD_DEFAULT = 0       # 0 = ปิด (ใช้ค่า default ของระบบ)
+_THRESHOLD_MIN     = 0
+_THRESHOLD_MAX     = 30000
+_THRESHOLD_STEP    = 100
 
-# QSettings key template
-_SETTINGS_KEY = "detection/min_defect_area/{}"
+# QSettings key templates
+_SETTINGS_KEY     = "detection/min_defect_area/{}"   # px² (interim — Detection เดิมอ่าน)
+_SETTINGS_KEY_PCT = "detection/threshold_pct/{}"     # % ของพื้นที่วงใน (ทีมจะใช้)
 
 
 def _load_threshold(size: str) -> int:
@@ -75,13 +76,21 @@ def _load_threshold(size: str) -> int:
 
 
 def _save_threshold(size: str, value: int) -> None:
-    """บันทึก min_defect_area ลง QSettings"""
-    QSettings().setValue(_SETTINGS_KEY.format(size), value)
+    """บันทึก threshold ลง QSettings (0 เป็นค่าที่ใช้จริง ไม่ใช่ปิด)
+
+    เก็บทั้ง px² (interim — Detection เดิมอ่าน) และ pct (ค่าที่ทีมจะใช้)
+    """
+    s = QSettings()
+    s.setValue(_SETTINGS_KEY.format(size), int(value))
+    s.setValue(_SETTINGS_KEY_PCT.format(size), round(_area_to_pct(value, size), 3))
+    s.sync()   # flush ให้ Detection/pipeline (QSettings instance แยก) อ่านเห็นทันที
 
 
 def _reset_threshold(size: str) -> None:
     """ลบ override ออก → Detection จะใช้ default"""
-    QSettings().remove(_SETTINGS_KEY.format(size))
+    s = QSettings()
+    s.remove(_SETTINGS_KEY.format(size))
+    s.remove(_SETTINGS_KEY_PCT.format(size))
 
 
 def _area_to_pct(area_px2: int, size: str) -> float:

@@ -23,12 +23,14 @@ logger = logging.getLogger(__name__)
 # ── Module-level helpers ───────────────────────────────────────────────────
 
 def _make_batch_id(size: str = "") -> str:
-    """Generate a human-readable batch ID: {size}_{YYYYMMDD}_{HHMM}
+    """Generate a human-readable batch ID: {size}_{YYYYMMDD}_{HHMMSS}
 
-    ตัวอย่าง: "M_20260525_1430"  (size M, 25 May 2026, 14:30 local time)
-    ถ้า size ว่าง (startup placeholder): "20260525_1430"
+    ตัวอย่าง: "M_20260525_143052"  (size M, 25 May 2026, 14:30:52 local time)
+    ถ้า size ว่าง (startup placeholder): "20260525_143052"
+
+    ใช้ระดับวินาที (เดิมเป็นนาที) — กัน reset 2 ครั้งในนาทีเดียวกันแล้ว ID ชนกัน
     """
-    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{size}_{ts}" if size else ts
 
 
@@ -64,6 +66,16 @@ class BatchStateManager:
         self._lock = threading.Lock()
         self._data = self._initialize()
 
+    def _unique_batch_id(self, size: str) -> str:
+        """สร้าง batch id ที่ไม่ชนกับของเดิมใน DB (เผื่อชนวินาทีเดียวกันข้าม session)"""
+        base = _make_batch_id(size)
+        if self._db is None or not self._db.batch_exists(base):
+            return base
+        n = 2
+        while self._db.batch_exists(f"{base}_{n}"):
+            n += 1
+        return f"{base}_{n}"
+
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
     def _initialize(self) -> _BatchData:
@@ -83,7 +95,7 @@ class BatchStateManager:
                     expected_size=recovered.get("expected_size", "") or "",
                 )
 
-        new_id = _make_batch_id()   # startup placeholder — no size yet
+        new_id = self._unique_batch_id("")   # startup placeholder — no size yet
         if self._db is not None:
             self._db.create_batch(new_id, utcnow_iso())
         logger.info("New batch started: %s", new_id)
@@ -119,7 +131,7 @@ class BatchStateManager:
 
     def reset(self, expected_total: int = 0, expected_size: str = "") -> dict:
         """Close the current batch and open a new one."""
-        new_id = _make_batch_id(expected_size)   # e.g. "M_20260525_1430"
+        new_id = self._unique_batch_id(expected_size)   # e.g. "M_20260525_143052"
         now    = utcnow_iso()
         with self._lock:
             old_id = self._data.batch_id

@@ -10,6 +10,10 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Debug-draw flag — main_window set ตรงๆ ตาม DETECTION_THRESHOLD_MODE
+# (ใช้ module global แทน QSettings เพราะ cross-instance ไม่ reliable)
+DEBUG_DRAW = False
+
 
 def _ms(t0: float) -> float:
     """คืน elapsed ms จาก t0 (perf_counter)"""
@@ -162,6 +166,8 @@ class Detection:
             logger.warning("Detection [Size %s]: Inner Pipe Not Detected", self.size)
             self.error   = f"[Size {self.size}] Inner Pipe Not Detected"
             self.verdict = "NG"
+            if DEBUG_DRAW:   # วงนอกเจอ — โชว์ไว้ debug ว่า inner fail ตรงไหน
+                cv2.circle(self.vis, (x, y), r_outer, (0, 255, 0), 2)
             cv2.putText(self.vis, self.error,
                         (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
             logger.info(
@@ -205,6 +211,12 @@ class Detection:
         # ── 7. Draw ───────────────────────────────────────────────────────
         t = time.perf_counter()
         vis = self.image.copy()
+
+        # Debug circles — แสดงเฉพาะ MA mode (gate ด้วย module flag DEBUG_DRAW)
+        if DEBUG_DRAW:
+            cv2.circle(vis, (x,  y),  r_outer, (0, 255, 0), 2)   # วงนอก = เขียว
+            cv2.circle(vis, (cx, cy), r_inner, (255, 0, 0), 2)   # วงใน  = น้ำเงิน
+
         for c in defects:
             bx, by, bw, bh = cv2.boundingRect(c)
             cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (0, 0, 255), 2)

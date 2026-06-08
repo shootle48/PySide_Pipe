@@ -110,6 +110,14 @@ class PipeInspector:
         Run Detection pipeline on one BGR frame.
         Returns a result dict compatible with CameraWorker signals.
         """
+        # ── TODO (ทีม): wire threshold_pct เข้า Detection ──────────────────
+        # ค่า pct (area_px2 / inner_area * 100) ถูกเก็บไว้ใน QSettings โดย
+        # batch_setup_dialog แล้ว — uncomment 3 บรรทัดนี้ + เพิ่ม param ใน
+        # Detection.__init__(image, size, threshold_pct=None) เมื่อพร้อมใช้
+        # from PySide6.QtCore import QSettings
+        # _pct = QSettings().value(f"detection/threshold_pct/{size}", None)
+        # _pct = float(_pct) if _pct is not None else None
+        # det = Detection(frame_bgr, size=size, threshold_pct=_pct)
         det = Detection(frame_bgr, size=size)
         vis = det.vis   # BGR image ที่ Detection วาด bbox + verdict ลงแล้ว
         verdict = det.verdict

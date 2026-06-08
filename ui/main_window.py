@@ -75,7 +75,7 @@ RS485_NG_OUTPUT_BIT = 1        # inputs ที่ watch (I0 = trigger sensor def
 # Detection threshold config (MA Mode)
 #   "off" — ซ่อน slider ใน Reset Batch dialog (default สำหรับลูกค้า)
 #   "on"  — แสดง slider ให้ MA ปรับ min_defect_area per size ได้
-DETECTION_THRESHOLD_MODE = "on"
+DETECTION_THRESHOLD_MODE = "off"
 
 
 class MainWindow(QMainWindow):
@@ -99,6 +99,10 @@ class MainWindow(QMainWindow):
         # ── Persisted settings ─────────────────────────────────────────────
         self._settings     = QSettings()   # uses app/org name from main.py
         self._camera_index = self._resolve_camera_index()
+        # บอก Detection ว่าอยู่ MA mode ไหน (เปิดเส้น debug วงนอก/วงใน)
+        # set module flag ตรงๆ — reliable กว่า QSettings cross-instance
+        import core.Detection as _detection_mod
+        _detection_mod.DEBUG_DRAW = (DETECTION_THRESHOLD_MODE == "on")
 
         # ── Backend singletons ─────────────────────────────────────────────
         self._db               = DatabaseManager()
@@ -1128,7 +1132,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet("""
             /* ── Global ───────────────────────────────────────────────── */
             QMainWindow, QWidget {
-                background: #eef0f3;
+                background: #ffffff;
                 color: #1a1d23;
                 font-family: "Segoe UI", "Inter", system-ui, sans-serif;
                 font-size: 14px;
@@ -1144,13 +1148,13 @@ class MainWindow(QMainWindow):
             /* ── Tab Bar ──────────────────────────────────────────────── */
             QTabWidget#mainTabs::pane {
                 border: none;
-                background: #eef0f3;
+                background: #ffffff;
             }
             QTabBar::tab {
-                background: #dde1e7;
+                background: #f1f5f9;
                 color: #52606d;
                 padding: 12px 26px;
-                border: 1px solid #cbd1d9;
+                border: 1px solid #e2e8f0;
                 border-bottom: none;
                 min-width: 160px;
                 font-size: 14px;
@@ -1163,14 +1167,14 @@ class MainWindow(QMainWindow):
                 border-bottom: 3px solid #1565c0;
             }
             QTabBar::tab:hover:!selected {
-                background: #e6eaf0;
+                background: #e8eef5;
                 color: #1a1d23;
             }
 
             /* ── Header ───────────────────────────────────────────────── */
             #header {
                 background: #ffffff;
-                border-bottom: 2px solid #cbd1d9;
+                border-bottom: 1px solid #e2e8f0;
             }
             #appTitle {
                 font-size: 17px;
@@ -1201,8 +1205,8 @@ class MainWindow(QMainWindow):
                 font-size: 13px;
                 font-weight: bold;
                 color: #52606d;
-                background: #f1f3f6;
-                border: 1px solid #cbd1d9;
+                background: #f5f7f9;
+                border: 1px solid #e2e8f0;
                 border-radius: 6px;
                 padding: 5px 10px;
                 min-width: 70px;
@@ -1228,7 +1232,7 @@ class MainWindow(QMainWindow):
             /* ── Frame panel ──────────────────────────────────────────── */
             #framePanel {
                 background: #ffffff;
-                border: 1px solid #cbd1d9;
+                border: 1px solid #e2e8f0;
                 border-radius: 8px;
                 margin: 10px 6px 10px 10px;
             }
@@ -1253,7 +1257,7 @@ class MainWindow(QMainWindow):
             /* ── Capture bar ──────────────────────────────────────────── */
             #captureBar {
                 background: #ffffff;
-                border-top: 1px solid #cbd1d9;
+                border-top: 1px solid #e2e8f0;
             }
 
             /* ── Mode toggle buttons ──────────────────────────────────── */
@@ -1301,8 +1305,8 @@ class MainWindow(QMainWindow):
             }
             #uploadBtn:disabled {
                 color: #a8b0ba;
-                border-color: #cbd1d9;
-                background: #eef0f3;
+                border-color: #e2e8f0;
+                background: #f5f7f9;
             }
 
             #captureBtn {
@@ -1324,20 +1328,20 @@ class MainWindow(QMainWindow):
             }
             #captureBtn:disabled {
                 color: #a8b0ba;
-                border-color: #cbd1d9;
-                background: #eef0f3;
+                border-color: #e2e8f0;
+                background: #f5f7f9;
             }
 
             /* ── Info panel ───────────────────────────────────────────── */
             #infoPanel {
-                background: #eef0f3;
+                background: #ffffff;
                 margin: 10px 10px 10px 6px;
             }
 
             /* ── Cards ────────────────────────────────────────────────── */
             #card {
-                background: #ffffff;
-                border: 1px solid #cbd1d9;
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
                 border-radius: 8px;
             }
             #cardTitle {
