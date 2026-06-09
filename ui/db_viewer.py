@@ -29,10 +29,10 @@ from pathlib import Path
 
 from datetime import datetime, time, timedelta, timezone
 
-from PySide6.QtCore    import QDate, Qt, QThread, Signal, Slot
+from PySide6.QtCore    import QDate, QLocale, Qt, QThread, Signal, Slot
 from PySide6.QtGui     import QColor, QFont, QImage, QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox, QDateEdit, QDialog, QFileDialog, QHBoxLayout, QLabel, QListWidget,
+    QDateEdit, QDialog, QFileDialog, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QMessageBox, QPushButton, QSplitter,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QFrame,
 )
@@ -68,12 +68,14 @@ class DbViewerDialog(QDialog):
         self._date_to:   "str | None" = None
 
         self.setWindowTitle("Database Viewer")
-        self.resize(1200, 780)
-        self.setMinimumSize(900, 600)
 
         self._build_ui()
         self._apply_stylesheet()
         self._load_batches()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.showFullScreen()
 
     # ══════════════════════════════════════════════════════════════════════
     # UI construction
@@ -146,16 +148,17 @@ class DbViewerDialog(QDialog):
         row.setContentsMargins(12, 8, 12, 8)
         row.setSpacing(8)
 
-        # ── Date filter (ซ้าย) ──────────────────────────────────────────
-        self._date_filter_chk = QCheckBox("กรองวันที่")
-        self._date_filter_chk.toggled.connect(self._on_date_filter_toggled)
-        row.addWidget(self._date_filter_chk)
+        # ── Date filter (ซ้าย) — กดเลือกวันได้เลย กรองทันที ──────────────
+        _en_locale = QLocale(QLocale.Language.English, QLocale.Country.UnitedStates)
+
+        row.addWidget(QLabel("กรองวันที่:"))
 
         self._date_from_edit = QDateEdit()
         self._date_from_edit.setCalendarPopup(True)
         self._date_from_edit.setDisplayFormat("dd/MM/yyyy")
         self._date_from_edit.setDate(QDate.currentDate().addDays(-7))
-        self._date_from_edit.setEnabled(False)
+        self._date_from_edit.setLocale(_en_locale)
+        self._date_from_edit.dateChanged.connect(self._on_apply_filter)
         row.addWidget(self._date_from_edit)
 
         dash = QLabel("–")
@@ -165,17 +168,11 @@ class DbViewerDialog(QDialog):
         self._date_to_edit.setCalendarPopup(True)
         self._date_to_edit.setDisplayFormat("dd/MM/yyyy")
         self._date_to_edit.setDate(QDate.currentDate())
-        self._date_to_edit.setEnabled(False)
+        self._date_to_edit.setLocale(_en_locale)
+        self._date_to_edit.dateChanged.connect(self._on_apply_filter)
         row.addWidget(self._date_to_edit)
 
-        self._apply_filter_btn = QPushButton("ใช้ตัวกรอง")
-        self._apply_filter_btn.setObjectName("secondaryBtn")
-        self._apply_filter_btn.setFixedHeight(34)
-        self._apply_filter_btn.setEnabled(False)
-        self._apply_filter_btn.clicked.connect(self._on_apply_filter)
-        row.addWidget(self._apply_filter_btn)
-
-        self._clear_filter_btn = QPushButton("ล้าง")
+        self._clear_filter_btn = QPushButton("ดูทั้งหมด")
         self._clear_filter_btn.setObjectName("secondaryBtn")
         self._clear_filter_btn.setFixedHeight(34)
         self._clear_filter_btn.clicked.connect(self._on_clear_filter)
@@ -495,14 +492,9 @@ class DbViewerDialog(QDialog):
         self._page += 1
         self._reload_page()
 
-    @Slot(bool)
-    def _on_date_filter_toggled(self, checked: bool) -> None:
-        self._date_from_edit.setEnabled(checked)
-        self._date_to_edit.setEnabled(checked)
-        self._apply_filter_btn.setEnabled(checked)
-
     @Slot()
     def _on_apply_filter(self) -> None:
+        """กรองทันทีเมื่อเลือกวัน (auto-apply จาก dateChanged)."""
         self._date_from = self._qdate_to_utc_iso(self._date_from_edit.date())
         self._date_to   = self._qdate_to_utc_iso(self._date_to_edit.date(), end_of_day=True)
         self._page = 0
@@ -510,9 +502,17 @@ class DbViewerDialog(QDialog):
 
     @Slot()
     def _on_clear_filter(self) -> None:
-        self._date_filter_chk.setChecked(False)
+        """ล้างตัวกรองวันที่ → ดูทั้งหมด (reset ช่องวันที่โดยไม่ยิง auto-apply ซ้ำ)."""
         self._date_from = None
         self._date_to   = None
+
+        self._date_from_edit.blockSignals(True)
+        self._date_to_edit.blockSignals(True)
+        self._date_from_edit.setDate(QDate.currentDate().addDays(-7))
+        self._date_to_edit.setDate(QDate.currentDate())
+        self._date_from_edit.blockSignals(False)
+        self._date_to_edit.blockSignals(False)
+
         self._page = 0
         self._reload_page()
 
@@ -989,6 +989,55 @@ class DbViewerDialog(QDialog):
                 padding: 4px 8px;
                 font-size: 13px;
                 min-width: 110px;
+            }
+            #topBar QDateEdit::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
+                width: 22px;
+                border-left: 1px solid #cbd1d9;
+            }
+
+            /* ── Calendar popup ──────────────────────────────────────────
+               ⚠️ ต้อง re-style เพราะกฎ global "QWidget { background }" ด้านบน
+               จะไหลลงไปทับ internal view ของปฏิทิน → กดเลือกวันไม่ได้     */
+            QCalendarWidget QWidget {
+                background: #ffffff;
+                color: #1a1d23;
+            }
+            QCalendarWidget QAbstractItemView:enabled {
+                background: #ffffff;
+                color: #1a1d23;
+                selection-background-color: #1565c0;
+                selection-color: #ffffff;
+                outline: 0;
+            }
+            QCalendarWidget QAbstractItemView:disabled {
+                color: #cbd1d9;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar {
+                background: #f7f8fa;
+            }
+            QCalendarWidget QToolButton {
+                background: transparent;
+                color: #1a1d23;
+                font-size: 13px;
+                font-weight: bold;
+                icon-size: 18px;
+                padding: 2px 6px;
+            }
+            QCalendarWidget QToolButton:hover {
+                background: #e3f2fd;
+                border-radius: 4px;
+            }
+            QCalendarWidget QMenu {
+                background: #ffffff;
+                color: #1a1d23;
+            }
+            QCalendarWidget QSpinBox {
+                background: #ffffff;
+                color: #1a1d23;
+                selection-background-color: #1565c0;
+                selection-color: #ffffff;
             }
             #showingLabel {
                 font-size: 13px;

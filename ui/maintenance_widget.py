@@ -260,7 +260,7 @@ class MaintenanceWidget(QWidget):
         pl.addSpacing(12)
 
         # Threshold slider
-        t_label = QLabel("Drift Threshold")
+        t_label = QLabel("Threshold")
         t_label.setObjectName("sliderLabel")
         pl.addWidget(t_label)
 
