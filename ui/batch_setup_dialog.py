@@ -36,8 +36,6 @@ Returns:
 
 from __future__ import annotations
 
-import math
-
 from PySide6.QtCore    import QLocale, QSettings, Qt, Signal
 from PySide6.QtGui     import QFont
 from PySide6.QtWidgets import (
@@ -51,53 +49,45 @@ SIZE_OPTIONS = ("L", "M", "S")
 SIZE_LABELS  = {"L": "Large", "M": "Medium", "S": "Small"}
 SIZE_NUMBERS = {"L": "1",     "M": "2",      "S": "3"}
 
-# ค่า r_inner เฉลี่ย (px) ต่อ size — ใช้คำนวณ % พื้นที่วงใน
-# ดูจาก SIZE_DEF ใน Detection.py: เฉลี่ย (minRadius + maxRadius) / 2
-_INNER_RADIUS_PX: dict[str, int] = {"L": 95, "M": 67, "S": 42}
-
-# Default และ range ของ slider
-_THRESHOLD_DEFAULT = 0       # 0 = ปิด (ใช้ค่า default ของระบบ)
+# Slider = "ระดับความเข้มงวด" 0–100% (UI)
+#   ค่าที่ส่งหลังบ้าน = 100 − slider  (flip: Detection ตีความ ค่าน้อย=เข้มงวด)
+#   - slider 0%   (เข้มงวดน้อย) → ส่ง 100 (หลวมสุด)
+#   - slider 100% (เข้มงวดมาก) → ส่ง 0   (เข้มงวดสุด)
+_THRESHOLD_DEFAULT = 100     # เริ่มที่ "เข้มงวดมาก" → ส่ง 0 (ค่าที่เอาไปคำนวณ)
 _THRESHOLD_MIN     = 0
-_THRESHOLD_MAX     = 30000
-_THRESHOLD_STEP    = 100
+_THRESHOLD_MAX     = 100
+_THRESHOLD_STEP    = 5
 
-# QSettings key templates
-_SETTINGS_KEY     = "detection/min_defect_area/{}"   # px² (interim — Detection เดิมอ่าน)
-_SETTINGS_KEY_PCT = "detection/threshold_pct/{}"     # % ของพื้นที่วงใน (ทีมจะใช้)
+# QSettings key — เก็บ "ค่าที่ส่งหลังบ้าน" (0–100) ตรงๆ ให้ pipeline อ่านส่ง Detection
+_SETTINGS_KEY_PCT = "detection/threshold_pct/{}"
 
 
 def _load_threshold(size: str) -> int:
-    """โหลด min_defect_area สำหรับ size นี้จาก QSettings (fallback default)"""
+    """คืน 'ตำแหน่ง slider' (0–100) ของ size นี้
+
+    QSettings เก็บค่าที่ส่งหลังบ้าน (100−slider) → แปลงกลับเป็นตำแหน่ง slider
+    """
     s = QSettings()
-    key = _SETTINGS_KEY.format(size)
+    key = _SETTINGS_KEY_PCT.format(size)
     if s.contains(key):
-        return int(s.value(key))
+        return 100 - int(float(s.value(key)))
     return _THRESHOLD_DEFAULT
 
 
-def _save_threshold(size: str, value: int) -> None:
-    """บันทึก threshold ลง QSettings (0 เป็นค่าที่ใช้จริง ไม่ใช่ปิด)
+def _save_threshold(size: str, slider_pos: int) -> None:
+    """บันทึก threshold ลง QSettings
 
-    เก็บทั้ง px² (interim — Detection เดิมอ่าน) และ pct (ค่าที่ทีมจะใช้)
+    เก็บ 'ค่าที่ส่งหลังบ้าน' = 100 − slider_pos (flip)
     """
+    sent = 100 - int(slider_pos)
     s = QSettings()
-    s.setValue(_SETTINGS_KEY.format(size), int(value))
-    s.setValue(_SETTINGS_KEY_PCT.format(size), round(_area_to_pct(value, size), 3))
-    s.sync()   # flush ให้ Detection/pipeline (QSettings instance แยก) อ่านเห็นทันที
+    s.setValue(_SETTINGS_KEY_PCT.format(size), sent)
+    s.sync()   # flush ให้ pipeline (QSettings instance แยก) อ่านเห็นทันที
 
 
 def _reset_threshold(size: str) -> None:
-    """ลบ override ออก → Detection จะใช้ default"""
-    s = QSettings()
-    s.remove(_SETTINGS_KEY.format(size))
-    s.remove(_SETTINGS_KEY_PCT.format(size))
-
-
-def _area_to_pct(area_px2: int, size: str) -> float:
-    """คำนวณ % ของพื้นที่วงใน"""
-    r = _INNER_RADIUS_PX.get(size, 67)
-    inner_area = math.pi * r * r
-    return area_px2 / inner_area * 100
+    """ลบ override ออก → pipeline ส่ง None → Detection ใช้ default"""
+    QSettings().remove(_SETTINGS_KEY_PCT.format(size))
 
 
 class _SizeButton(QFrame):
@@ -235,20 +225,20 @@ class BatchSetupDialog(QDialog):
 
         # Slider row
         slider_row = QHBoxLayout()
-        lbl_strict = QLabel("เข้มงวด")
+        lbl_strict = QLabel("เข้มงวดน้อย")
         lbl_strict.setObjectName("dimLabel")
         slider_row.addWidget(lbl_strict)
 
         self._threshold_slider = QSlider(Qt.Horizontal)
         self._threshold_slider.setRange(_THRESHOLD_MIN, _THRESHOLD_MAX)
         self._threshold_slider.setSingleStep(_THRESHOLD_STEP)
-        self._threshold_slider.setPageStep(_THRESHOLD_STEP * 5)
+        self._threshold_slider.setPageStep(_THRESHOLD_STEP * 2)
         self._threshold_slider.setValue(_THRESHOLD_DEFAULT)
         self._threshold_slider.setFixedHeight(36)
         self._threshold_slider.valueChanged.connect(self._on_slider_changed)
         slider_row.addWidget(self._threshold_slider, stretch=1)
 
-        lbl_loose = QLabel("หละหลวม")
+        lbl_loose = QLabel("เข้มงวดมาก")
         lbl_loose.setObjectName("dimLabel")
         slider_row.addWidget(lbl_loose)
         th_layout.addLayout(slider_row)
@@ -315,11 +305,10 @@ class BatchSetupDialog(QDialog):
         self._threshold_slider.blockSignals(False)
         self._update_value_label(val)
 
-    def _update_value_label(self, value: int) -> None:
-        """อัปเดต label แสดง px² + % พื้นที่วงใน"""
-        pct = _area_to_pct(value, self._selected_size)
+    def _update_value_label(self, slider_pos: int) -> None:
+        """อัปเดต label แสดงระดับความเข้มงวด + ค่าที่ส่งหลังบ้าน (ช่วย MA debug)"""
         self._threshold_value_label.setText(
-            f"{value} px²   (~{pct:.1f}% ของพื้นที่วงใน)"
+            f"ความเข้มงวด {slider_pos}%   (→ ส่ง {100 - slider_pos}% ของพื้นที่วงใน)"
         )
 
     # ── Slots ─────────────────────────────────────────────────────────────
@@ -342,8 +331,7 @@ class BatchSetupDialog(QDialog):
         self._update_value_label(snapped)
 
     def _on_reset_threshold(self) -> None:
-        """รีเซ็ตค่า size ปัจจุบันกลับ default"""
-        _reset_threshold(self._selected_size)
+        """รีเซ็ต slider กลับ default (เข้มงวดมาก 100% → ส่ง 0) — บันทึกตอน START"""
         self._threshold_slider.setValue(_THRESHOLD_DEFAULT)
         self._update_value_label(_THRESHOLD_DEFAULT)
 

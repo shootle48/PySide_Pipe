@@ -5,6 +5,10 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# วาดเส้น debug วงนอก/วงใน หรือไม่ — main_window override ตาม MA mode
+# (define ไว้ที่นี่ default False ให้ Detection ใช้ standalone/benchmark ได้โดยไม่ NameError)
+DEBUG_DRAW = False
+
 def _check_cuda() -> bool:
     try:
         return (
@@ -93,21 +97,28 @@ _CUDA_DETECTORS: dict = _build_cuda_detectors()
 
 class Detection:
     VALID_SIZES = ("L", "M", "S")
-    THRESH_MIN  = 0
-    THRESH_MAX  = 30000
+    PCT_MIN = 0.0
+    PCT_MAX = 100.0   # threshold = % ของพื้นที่วงใน (inner circle)
 
-    def __init__(self, image: np.ndarray, size: str, defthresh: int = 0):
+    def __init__(self, image: np.ndarray, size: str, defthresh_pct: float = 0.0):
         size = size.upper().strip()
         if size not in self.VALID_SIZES:
             raise ValueError(f"size must be one of {self.VALID_SIZES}, got '{size}'")
 
-        self.defthresh = max(self.THRESH_MIN, min(self.THRESH_MAX, int(defthresh)))
-        if self.defthresh != defthresh:
+        # threshold = % ของพื้นที่วงใน (pct/100 × พื้นที่วงในจริง คำนวณตอน processing)
+        # default 0.0 → 0% → 0 px² = เข้มงวดสุด (production ไม่ override ก็ใช้ค่านี้)
+        pct = 0.0 if defthresh_pct is None else float(defthresh_pct)
+        self.defthresh_pct = max(self.PCT_MIN, min(self.PCT_MAX, pct))
+        if self.defthresh_pct != pct:
             logger.warning(
-                "Detection [%s]: defthresh=%s clamped to %s (valid range %s–%s)",
-                size, defthresh, self.defthresh, self.THRESH_MIN, self.THRESH_MAX,
+                "Detection [%s]: defthresh_pct=%s clamped to %.2f (ช่วง 0–100%%)",
+                size, defthresh_pct, self.defthresh_pct,
             )
-        logger.debug("Detection [%s]: defthresh=%d", size, self.defthresh)
+        logger.info(
+            "Detection [%s]: [STEP] รับ threshold = %.2f%% ของพื้นที่วงใน",
+            size, self.defthresh_pct,
+        )
+        self.thresh_px2 = None   # px² จริง — คำนวณตอน processing (ต้องรู้ r_inner)
 
         self.image = image
         self.size  = size
@@ -247,13 +258,25 @@ class Detection:
 
         # ── 6. Contour + Verdict ──────────────────────────────────────────
         t = time.perf_counter()
+
+        # แปลง threshold → px² : % ของพื้นที่วงใน
+        inner_area_px2 = float(np.pi * (r_inner ** 2))
+        self.thresh_px2 = (self.defthresh_pct / 100.0) * inner_area_px2
+        logger.info(
+            "Detection [%s]: [STEP] threshold %.2f%% × พื้นที่วงใน %.0f px² (r_inner=%d) = %.0f px²",
+            self.size, self.defthresh_pct, inner_area_px2, r_inner, self.thresh_px2,
+        )
+
         contours, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         all_areas = [(c, cv2.contourArea(c)) for c in contours]
-        defects  = [c for c, area in all_areas if area >= self.defthresh]
+        defects  = [c for c, area in all_areas if area >= self.thresh_px2]
         verdict  = "NG" if defects else "OK"
         self.defects = defects
         self.verdict = verdict
         t_contour = _ms(t)
+
+        # อธิบาย threshold ที่ใช้จริง (สำหรับ debug)
+        thr_desc = f"{self.defthresh_pct:.2f}%={self.thresh_px2:.0f}px²"
 
         defect_areas = sorted(
             [cv2.contourArea(c) for c in defects],
@@ -266,7 +289,7 @@ class Detection:
                 verdict,
                 len(defects),
                 [f"{a:.0f}" for a in defect_areas],
-                self.defthresh,
+                thr_desc,
                 _USE_CUDA,
             )
         else:
@@ -274,7 +297,7 @@ class Detection:
             logger.info(
                 "Detection [%s]: OK | defects=0 | thresh=%s | rejected_areas(px²)=%s | GPU=%s",
                 self.size,
-                self.defthresh,
+                thr_desc,
                 [f"{a:.0f}" for a in rejected_areas[:5]],
                 _USE_CUDA,
             )
@@ -317,19 +340,19 @@ class Detection:
 #     img_path = r"C:\Work\Praram Nine\Smartsense\Pipe_Detection_Dataset\Video_3_Size_M\frame_023027.jpg"
 #     # img_path = r"C:\Users\Mate\Downloads\drive-download-20260524T075736Z-3-001\IMG_7037.PNG"
 #     size     = "M"
-#     defthresh = 3000
+#     defthresh_pct = 10.0   # % ของพื้นที่วงใน (None = ใช้ default px²)
 
 #     image = cv2.imread(img_path)
 #     if image is None:
 #         raise FileNotFoundError(f"Cannot read image: {img_path}")
 
-#     det = Detection(image, size=size, defthresh=defthresh)
+#     det = Detection(image, size=size, defthresh_pct=defthresh_pct)
 #     out = det.output
 
 #     print(f"Result : {out['result']}")
 #     print(f"Success: {out['success']}")
 #     print(f"Inner radius: {det.roi_inner_raw}")
-#     print(f"Defthresh   : {det.defthresh} px²")
+#     print(f"Threshold   : {det.thresh_px2} px² (จาก {det.defthresh_pct}%)")
 #     print(f"Defect areas: {out['defect_areas']} px²")
 #     if out["error"]:
 #         print(f"Error  : {out['error']}")

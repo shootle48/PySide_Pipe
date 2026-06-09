@@ -100,6 +100,9 @@ def main() -> None:
     t_launch = time.perf_counter()
 
     app = QApplication(sys.argv)
+    # ⚠️ ต้องตั้ง org + app name คู่กัน — ไม่งั้น QSettings() ไม่มี scope ที่ persist
+    #    (ทำให้ค่า threshold/camera/calibration save ไม่ติด = "ใช้ default อย่างเดียว")
+    app.setOrganizationName("SmartSense")
     app.setApplicationName("Pipe Inspector")
 
     try:
