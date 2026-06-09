@@ -308,7 +308,7 @@ class BatchSetupDialog(QDialog):
     def _update_value_label(self, slider_pos: int) -> None:
         """อัปเดต label แสดงระดับความเข้มงวด + ค่าที่ส่งหลังบ้าน (ช่วย MA debug)"""
         self._threshold_value_label.setText(
-            f"ความเข้มงวด {slider_pos}%   (→ ส่ง {100 - slider_pos}% ของพื้นที่วงใน)"
+            f"ความเข้มงวด {slider_pos}% "
         )
 
     # ── Slots ─────────────────────────────────────────────────────────────

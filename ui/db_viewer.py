@@ -27,16 +27,21 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore    import Qt, QThread, Signal, Slot
+from datetime import datetime, time, timedelta, timezone
+
+from PySide6.QtCore    import QDate, Qt, QThread, Signal, Slot
 from PySide6.QtGui     import QColor, QFont, QImage, QPixmap
 from PySide6.QtWidgets import (
-    QDialog, QFileDialog, QHBoxLayout, QLabel, QListWidget,
+    QCheckBox, QDateEdit, QDialog, QFileDialog, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QMessageBox, QPushButton, QSplitter,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QFrame,
 )
 
 from core.constants import MONO_FONT, VERDICT_COLORS
 from core.utils     import iso_to_local_str
+
+# จำนวน inspection ต่อหน้า (แบ่งหน้าเพื่อไม่โหลดทั้งหมดเข้า RAM)
+_PAGE_SIZE = 10
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +59,13 @@ class DbViewerDialog(QDialog):
         super().__init__(parent)
         self._db             = db
         self._current_batch  = None   # currently selected batch id
-        self._row_images:    list[str] = []   # image_b64 per table row (index-aligned)
+
+        # ── Pagination + date-filter state ─────────────────────────────────
+        self._page       = 0
+        self._page_size  = _PAGE_SIZE
+        self._total      = 0
+        self._date_from: "str | None" = None   # UTC ISO bound (None = ไม่กรอง)
+        self._date_to:   "str | None" = None
 
         self.setWindowTitle("Database Viewer")
         self.resize(1200, 780)
@@ -97,6 +108,9 @@ class DbViewerDialog(QDialog):
         line.setObjectName("divider")
         root.addWidget(line)
 
+        # ── Top bar: date filter (ซ้าย) + pagination (ขวา) ─────────────
+        root.addWidget(self._build_topbar())
+
         # ── Main splitter (batches left / inspections right) ───────────
         splitter = QSplitter(Qt.Horizontal)
         splitter.setHandleWidth(2)
@@ -104,7 +118,8 @@ class DbViewerDialog(QDialog):
 
         splitter.addWidget(self._build_batch_panel())
         splitter.addWidget(self._build_inspection_panel())
-        splitter.setSizes([320, 880])
+        splitter.addWidget(self._build_preview_panel())
+        splitter.setSizes([240, 560, 460])
 
         root.addWidget(splitter, stretch=1)
 
@@ -121,6 +136,71 @@ class DbViewerDialog(QDialog):
         close_row.addWidget(close_btn)
         close_row.addStretch(1)
         root.addLayout(close_row)
+
+    # ── Top bar: date filter + pagination ───────────────────────────────
+
+    def _build_topbar(self) -> QWidget:
+        bar = QFrame()
+        bar.setObjectName("topBar")
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(12, 8, 12, 8)
+        row.setSpacing(8)
+
+        # ── Date filter (ซ้าย) ──────────────────────────────────────────
+        self._date_filter_chk = QCheckBox("กรองวันที่")
+        self._date_filter_chk.toggled.connect(self._on_date_filter_toggled)
+        row.addWidget(self._date_filter_chk)
+
+        self._date_from_edit = QDateEdit()
+        self._date_from_edit.setCalendarPopup(True)
+        self._date_from_edit.setDisplayFormat("dd/MM/yyyy")
+        self._date_from_edit.setDate(QDate.currentDate().addDays(-7))
+        self._date_from_edit.setEnabled(False)
+        row.addWidget(self._date_from_edit)
+
+        dash = QLabel("–")
+        row.addWidget(dash)
+
+        self._date_to_edit = QDateEdit()
+        self._date_to_edit.setCalendarPopup(True)
+        self._date_to_edit.setDisplayFormat("dd/MM/yyyy")
+        self._date_to_edit.setDate(QDate.currentDate())
+        self._date_to_edit.setEnabled(False)
+        row.addWidget(self._date_to_edit)
+
+        self._apply_filter_btn = QPushButton("ใช้ตัวกรอง")
+        self._apply_filter_btn.setObjectName("secondaryBtn")
+        self._apply_filter_btn.setFixedHeight(34)
+        self._apply_filter_btn.setEnabled(False)
+        self._apply_filter_btn.clicked.connect(self._on_apply_filter)
+        row.addWidget(self._apply_filter_btn)
+
+        self._clear_filter_btn = QPushButton("ล้าง")
+        self._clear_filter_btn.setObjectName("secondaryBtn")
+        self._clear_filter_btn.setFixedHeight(34)
+        self._clear_filter_btn.clicked.connect(self._on_clear_filter)
+        row.addWidget(self._clear_filter_btn)
+
+        row.addStretch()
+
+        # ── Pagination (ขวา) ────────────────────────────────────────────
+        self._page_label = QLabel("—")
+        self._page_label.setObjectName("showingLabel")
+        row.addWidget(self._page_label)
+
+        self._prev_btn = QPushButton("◀")
+        self._prev_btn.setObjectName("pageIconBtn")
+        self._prev_btn.setFixedSize(40, 36)
+        self._prev_btn.clicked.connect(self._on_prev_page)
+        row.addWidget(self._prev_btn)
+
+        self._next_btn = QPushButton("▶")
+        self._next_btn.setObjectName("pageIconBtn")
+        self._next_btn.setFixedSize(40, 36)
+        self._next_btn.clicked.connect(self._on_next_page)
+        row.addWidget(self._next_btn)
+
+        return bar
 
     # ── Left: batch list ────────────────────────────────────────────────
 
@@ -147,120 +227,127 @@ class DbViewerDialog(QDialog):
 
         return panel
 
-    # ── Right: inspection table + image preview ─────────────────────────
+    # ── Middle: inspection table ────────────────────────────────────────
 
     def _build_inspection_panel(self) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(6, 0, 0, 0)
+        layout.setContentsMargins(6, 0, 6, 0)
         layout.setSpacing(6)
 
-        label = QLabel("INSPECTIONS")
-        label.setObjectName("sectionTitle")
-        layout.addWidget(label)
+        # Header: title + OK/NG chips
+        head = QHBoxLayout()
+        title = QLabel("Inspection History")
+        title.setObjectName("panelHeader")
+        head.addWidget(title)
+        head.addStretch()
+        self._ok_chip = QLabel("OK: —")
+        self._ok_chip.setObjectName("okChip")
+        head.addWidget(self._ok_chip)
+        self._ng_chip = QLabel("NG: —")
+        self._ng_chip.setObjectName("ngChip")
+        head.addWidget(self._ng_chip)
+        layout.addLayout(head)
 
-        # Vertical splitter: table (top) / image preview (bottom)
-        v_split = QSplitter(Qt.Vertical)
-        v_split.setHandleWidth(1)
-        v_split.setChildrenCollapsible(False)
-
-        # ── Table ──────────────────────────────────────────────────────
+        # Table (4 cols — no Size)
         self._table = QTableWidget()
         self._table.setObjectName("inspectionTable")
-        self._table.setColumnCount(5)
-        self._table.setHorizontalHeaderLabels([
-            "No.", "Verdict", "Size", "Defects", "Timestamp",
-        ])
+        self._table.setColumnCount(4)
+        self._table.setHorizontalHeaderLabels(["No.", "Verdict", "Defects", "Timestamp"])
         self._table.horizontalHeader().setStretchLastSection(True)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.setAlternatingRowColors(True)
         self._table.verticalHeader().setVisible(False)
-        self._table.setColumnWidth(0, 60)
-        self._table.setColumnWidth(1, 80)
-        self._table.setColumnWidth(2, 60)    # Size
-        self._table.setColumnWidth(3, 140)   # Defects
+        self._table.setColumnWidth(0, 70)
+        self._table.setColumnWidth(1, 100)
+        self._table.setColumnWidth(2, 200)
         self._table.itemSelectionChanged.connect(self._on_row_selected)
-        v_split.addWidget(self._table)
+        layout.addWidget(self._table, stretch=1)
 
-        # ── Image preview ───────────────────────────────────────────────
-        preview_panel = QWidget()
-        preview_panel.setObjectName("previewPanel")
-        preview_layout = QVBoxLayout(preview_panel)
-        preview_layout.setContentsMargins(0, 6, 0, 0)
-        preview_layout.setSpacing(4)
+        # Action buttons row (Clear / Delete / Export)
+        actions = QHBoxLayout()
+        actions.setSpacing(10)
 
-        title_row = QHBoxLayout()
-        preview_title = QLabel("NG IMAGE PREVIEW")
-        preview_title.setObjectName("sectionTitle")
-        title_row.addWidget(preview_title)
-        title_row.addStretch()
-        self._fullscreen_btn = QPushButton("ขยายรูป")
-        self._fullscreen_btn.setObjectName("secondaryBtn")
-        self._fullscreen_btn.setFixedHeight(36)
-        self._fullscreen_btn.setMinimumWidth(120)
-        self._fullscreen_btn.setEnabled(False)
-        self._fullscreen_btn.clicked.connect(self._open_fullscreen)
-        title_row.addWidget(self._fullscreen_btn)
-        preview_layout.addLayout(title_row)
+        clear_img_btn = QPushButton("Clear Image")
+        clear_img_btn.setObjectName("secondaryBtn")
+        clear_img_btn.setFixedHeight(40)
+        clear_img_btn.setToolTip("เคลียร์รูปของ record ที่เลือก (เก็บ metadata ไว้)")
+        clear_img_btn.clicked.connect(self._clear_selected_image)
+        actions.addWidget(clear_img_btn)
 
+        delete_row_btn = QPushButton("ลบ Record")
+        delete_row_btn.setObjectName("dangerBtn")
+        delete_row_btn.setFixedHeight(40)
+        delete_row_btn.setToolTip("ลบ inspection record ที่เลือกออกทั้งหมด")
+        delete_row_btn.clicked.connect(self._delete_selected_record)
+        actions.addWidget(delete_row_btn)
+
+        actions.addStretch()
+
+        export_btn = QPushButton("Export CSV")
+        export_btn.setObjectName("secondaryBtn")
+        export_btn.setFixedHeight(40)
+        export_btn.clicked.connect(self._export_csv)
+        actions.addWidget(export_btn)
+
+        export_ds_btn = QPushButton("Export Dataset")
+        export_ds_btn.setObjectName("secondaryBtn")
+        export_ds_btn.setFixedHeight(40)
+        export_ds_btn.setToolTip("Export รูป + annotations สำหรับทำ dataset train model")
+        export_ds_btn.clicked.connect(self._export_dataset)
+        actions.addWidget(export_ds_btn)
+
+        layout.addLayout(actions)
+        return panel
+
+    # ── Right: NG image preview ─────────────────────────────────────────
+
+    def _build_preview_panel(self) -> QWidget:
+        panel = QWidget()
+        panel.setObjectName("previewPanel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        # Header: title + ID chip
+        head = QHBoxLayout()
+        title = QLabel("NG Image Preview")
+        title.setObjectName("panelHeader")
+        head.addWidget(title)
+        head.addStretch()
+        self._id_chip = QLabel("ID: —")
+        self._id_chip.setObjectName("idChip")
+        head.addWidget(self._id_chip)
+        layout.addLayout(head)
+
+        # Image area
         self._preview_label = QLabel()
         self._preview_label.setObjectName("imagePreview")
         self._preview_label.setAlignment(Qt.AlignCenter)
         self._preview_label.setText("— เลือก row ที่เป็น NG เพื่อดูภาพ —")
-        self._preview_label.setMinimumHeight(160)
-        preview_layout.addWidget(self._preview_label, stretch=1)
-
+        self._preview_label.setMinimumHeight(240)
+        layout.addWidget(self._preview_label, stretch=1)
         self._current_pixmap: QPixmap | None = None
 
-        v_split.addWidget(preview_panel)
-        v_split.setSizes([340, 200])
-        layout.addWidget(v_split, stretch=1)
+        # Footer: DEFECT TYPE + ขยายรูป
+        footer = QHBoxLayout()
+        dt_cap = QLabel("DEFECT TYPE")
+        dt_cap.setObjectName("footerCaption")
+        footer.addWidget(dt_cap)
+        self._defect_type_label = QLabel("—")
+        self._defect_type_label.setObjectName("defectTypeValue")
+        footer.addWidget(self._defect_type_label)
+        footer.addStretch()
+        self._fullscreen_btn = QPushButton("ขยายรูป")
+        self._fullscreen_btn.setObjectName("secondaryBtn")
+        self._fullscreen_btn.setFixedHeight(36)
+        self._fullscreen_btn.setMinimumWidth(110)
+        self._fullscreen_btn.setEnabled(False)
+        self._fullscreen_btn.clicked.connect(self._open_fullscreen)
+        footer.addWidget(self._fullscreen_btn)
+        layout.addLayout(footer)
 
-        # Stats + export bar
-        bottom = QHBoxLayout()
-        bottom.setSpacing(16)
-
-        self._stat_total = QLabel("Total: —")
-        self._stat_total.setObjectName("statLabel")
-        self._stat_ng    = QLabel("NG: —")
-        self._stat_ng.setObjectName("statLabel")
-        self._stat_rate  = QLabel("Quality Rate: —")
-        self._stat_rate.setObjectName("statLabel")
-
-        bottom.addWidget(self._stat_total)
-        bottom.addWidget(self._stat_ng)
-        bottom.addWidget(self._stat_rate)
-        bottom.addStretch()
-
-        clear_img_btn = QPushButton("Clear Image")
-        clear_img_btn.setObjectName("secondaryBtn")
-        clear_img_btn.setFixedHeight(44)
-        clear_img_btn.setToolTip("เคลียร์รูปของ record ที่เลือก (เก็บ metadata ไว้)")
-        clear_img_btn.clicked.connect(self._clear_selected_image)
-        bottom.addWidget(clear_img_btn)
-
-        delete_row_btn = QPushButton("ลบ Record")
-        delete_row_btn.setObjectName("dangerBtn")
-        delete_row_btn.setFixedHeight(44)
-        delete_row_btn.setToolTip("ลบ inspection record ที่เลือกออกทั้งหมด")
-        delete_row_btn.clicked.connect(self._delete_selected_record)
-        bottom.addWidget(delete_row_btn)
-
-        export_btn = QPushButton("Export CSV")
-        export_btn.setObjectName("secondaryBtn")
-        export_btn.setFixedHeight(44)
-        export_btn.clicked.connect(self._export_csv)
-        bottom.addWidget(export_btn)
-
-        export_ds_btn = QPushButton("Export Dataset")
-        export_ds_btn.setObjectName("secondaryBtn")
-        export_ds_btn.setFixedHeight(44)
-        export_ds_btn.setToolTip("Export รูป + annotations สำหรับทำ dataset train model")
-        export_ds_btn.clicked.connect(self._export_dataset)
-        bottom.addWidget(export_ds_btn)
-
-        layout.addLayout(bottom)
         return panel
 
     # ══════════════════════════════════════════════════════════════════════
@@ -298,56 +385,136 @@ class DbViewerDialog(QDialog):
             return "—"
         return f"{(total - ng) / total * 100:.1f}%"
 
-    def _populate_inspection_table(self, rows: list) -> None:
-        """Fill the inspection QTableWidget from a list of row dicts."""
+    def _populate_inspection_table(self, rows: list, offset: int = 0) -> None:
+        """Fill the inspection QTableWidget from a list of row dicts.
+
+        offset = ลำดับเริ่มต้นของหน้านี้ (ทำให้ No. ต่อเนื่องข้ามหน้า)
+        ไม่เก็บ image_b64 แล้ว — โหลด lazy ตอนคลิกผ่าน get_inspection_image()
+        """
         self._table.setRowCount(0)
-        self._row_images = []   # reset parallel image list (index-aligned with rows)
 
         for row_data in rows:
             row_idx = self._table.rowCount()
             self._table.insertRow(row_idx)
 
-            no_item = QTableWidgetItem(str(row_idx + 1))
+            no_item = QTableWidgetItem(str(offset + row_idx + 1))
             no_item.setFont(QFont(MONO_FONT, 12))
             no_item.setTextAlignment(Qt.AlignCenter)
             no_item.setData(Qt.UserRole, row_data["piece_id"])  # เก็บ piece_id ไว้ใช้ delete/clear
             self._table.setItem(row_idx, 0, no_item)
 
-            # Verdict — coloured using shared palette
+            # Verdict — pill badge (cellWidget โค้งมน) ; โปร่งใสต่อ mouse → คลิกแล้ว row ยัง select ได้
             verdict = row_data["verdict"]
-            verdict_item = QTableWidgetItem(verdict)
-            verdict_item.setTextAlignment(Qt.AlignCenter)
-            verdict_item.setFont(QFont("Segoe UI", 12, QFont.Bold))
-            fg = VERDICT_COLORS.get(verdict, "#1a1d23")
-            bg = "#e8f5e9" if verdict == "OK" else "#ffebee"
-            verdict_item.setForeground(QColor(fg))
-            verdict_item.setBackground(QColor(bg))
-            self._table.setItem(row_idx, 1, verdict_item)
-
-            size_text = row_data.get("detected_size", "") or "—"
-            size_item = QTableWidgetItem(size_text)
-            size_item.setTextAlignment(Qt.AlignCenter)
-            size_item.setFont(QFont("Segoe UI", 12, QFont.Bold))
-            self._table.setItem(row_idx, 2, size_item)
+            pill = QLabel(verdict)
+            pill.setAlignment(Qt.AlignCenter)
+            pill.setObjectName("verdictPillOK" if verdict == "OK" else "verdictPillNG")
+            wrap = QWidget()
+            wrap.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            wrap.setStyleSheet("background: transparent;")
+            wl = QHBoxLayout(wrap)
+            wl.setContentsMargins(8, 4, 8, 4)
+            wl.addWidget(pill)
+            self._table.setCellWidget(row_idx, 1, wrap)
 
             dets = row_data.get("detections", [])
             det_text = ", ".join(d.get("label", "unknown") for d in dets) if dets else "—"
-            self._set_cell(row_idx, 3, det_text)
+            self._set_cell(row_idx, 2, det_text)
 
             ts_str = iso_to_local_str(row_data["timestamp"], fmt="%Y-%m-%d %H:%M:%S")
-            self._set_cell(row_idx, 4, ts_str)
-
-            self._row_images.append(row_data.get("image_b64") or "")
+            self._set_cell(row_idx, 3, ts_str)
 
     def _load_inspections(self, batch_id: str) -> None:
-        """Load inspections for the selected batch into the table."""
+        """เลือก batch ใหม่ → กลับไปหน้าแรก แล้วโหลด"""
         self._current_batch = batch_id
-        rows = self._db.get_recent_inspections(batch_id, limit=500)
-        self._populate_inspection_table(rows)
+        self._page = 0
+        self._reload_page()
 
-        total = len(rows)
-        ng    = sum(1 for r in rows if r["verdict"] == "NG")
-        self._update_stats_bar(total, ng)
+    # ── Date filter helpers ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _qdate_to_utc_iso(qdate: QDate, end_of_day: bool = False) -> str:
+        """แปลง QDate (local) → UTC ISO string สำหรับ query
+
+        end_of_day=False → 00:00 ของวันนั้น (lower bound, inclusive)
+        end_of_day=True  → 00:00 ของวันถัดไป (upper bound, exclusive)
+        """
+        py_date = qdate.toPython()
+        local_midnight = datetime.combine(py_date, time.min).astimezone()  # local tz
+        if end_of_day:
+            local_midnight = local_midnight + timedelta(days=1)   # ขอบบน exclusive
+        return local_midnight.astimezone(timezone.utc).isoformat()
+
+    def _reload_page(self) -> None:
+        """โหลด inspection หน้าปัจจุบัน (LIMIT/OFFSET + date filter) — โหลดเบา"""
+        if self._current_batch is None:
+            return
+
+        df, dt = self._date_from, self._date_to
+        self._total = self._db.count_inspections(self._current_batch, df, dt)
+
+        # clamp page ให้อยู่ในขอบเขต (เผื่อ filter ทำให้จำนวนหน้าลดลง)
+        max_page = max(0, (self._total - 1) // self._page_size) if self._total else 0
+        self._page = min(self._page, max_page)
+        offset = self._page * self._page_size
+
+        rows = self._db.get_inspections_page(
+            self._current_batch, df, dt, limit=self._page_size, offset=offset,
+        )
+        self._populate_inspection_table(rows, offset=offset)
+
+        # clear preview (row selection หาย)
+        self._current_pixmap = None
+        self._fullscreen_btn.setEnabled(False)
+        self._preview_label.setPixmap(QPixmap())
+        self._preview_label.setText("— เลือก row ที่เป็น NG เพื่อดูภาพ —")
+        self._id_chip.setText("ID: —")
+        self._defect_type_label.setText("—")
+
+        # pagination label "Showing X-Y of N records" + ปุ่ม
+        start = offset + 1 if self._total else 0
+        end   = offset + len(rows)
+        self._page_label.setText(f"Showing {start}-{end} of {self._total} records")
+        total_pages = max(1, (self._total + self._page_size - 1) // self._page_size)
+        self._prev_btn.setEnabled(self._page > 0)
+        self._next_btn.setEnabled(self._page < total_pages - 1)
+
+        # stats bar (นับจาก filter ทั้งหมด ไม่ใช่แค่หน้าปัจจุบัน)
+        ng = self._db.count_inspections(self._current_batch, df, dt, verdict="NG")
+        self._update_stats_bar(self._total, ng)
+
+    # ── Pagination / filter slots ───────────────────────────────────────────
+
+    @Slot()
+    def _on_prev_page(self) -> None:
+        if self._page > 0:
+            self._page -= 1
+            self._reload_page()
+
+    @Slot()
+    def _on_next_page(self) -> None:
+        self._page += 1
+        self._reload_page()
+
+    @Slot(bool)
+    def _on_date_filter_toggled(self, checked: bool) -> None:
+        self._date_from_edit.setEnabled(checked)
+        self._date_to_edit.setEnabled(checked)
+        self._apply_filter_btn.setEnabled(checked)
+
+    @Slot()
+    def _on_apply_filter(self) -> None:
+        self._date_from = self._qdate_to_utc_iso(self._date_from_edit.date())
+        self._date_to   = self._qdate_to_utc_iso(self._date_to_edit.date(), end_of_day=True)
+        self._page = 0
+        self._reload_page()
+
+    @Slot()
+    def _on_clear_filter(self) -> None:
+        self._date_filter_chk.setChecked(False)
+        self._date_from = None
+        self._date_to   = None
+        self._page = 0
+        self._reload_page()
 
     def _set_cell(self, row: int, col: int, text: str) -> None:
         item = QTableWidgetItem(text)
@@ -355,10 +522,9 @@ class DbViewerDialog(QDialog):
         self._table.setItem(row, col, item)
 
     def _update_stats_bar(self, total: int, ng: int) -> None:
-        """อัพเดต stats bar ด้านล่างตาราง และ batch list item ซ้าย."""
-        self._stat_total.setText(f"Total: {total}")
-        self._stat_ng.setText(f"NG: {ng}")
-        self._stat_rate.setText(f"Quality Rate: {self._batch_ng_rate_str(total, ng)}")
+        """อัพเดต OK/NG chips ใน header + batch list item ซ้าย."""
+        self._ok_chip.setText(f"OK: {max(0, total - ng)}")
+        self._ng_chip.setText(f"NG: {ng}")
 
         # Patch batch list item text in-place — no full reload needed
         for i in range(self._batch_list.count()):
@@ -375,15 +541,19 @@ class DbViewerDialog(QDialog):
 
     @Slot()
     def _on_row_selected(self) -> None:
-        """แสดง NG image เมื่อ user คลิก row ในตาราง"""
-        selected = self._table.selectedItems()
-        if not selected:
-            return
-        row_idx = self._table.row(selected[0])
-        if row_idx >= len(self._row_images):
+        """แสดง NG image เมื่อ user คลิก row ในตาราง — โหลดรูป lazy ด้วย piece_id"""
+        piece_id = self._get_selected_piece_id()
+        if piece_id is None:
             return
 
-        b64 = self._row_images[row_idx]
+        # อัปเดต ID chip + DEFECT TYPE (จาก defects cell col 2)
+        self._id_chip.setText(f"ID: {piece_id}")
+        sel = self._table.selectedItems()
+        if sel:
+            det_item = self._table.item(self._table.row(sel[0]), 2)
+            self._defect_type_label.setText(det_item.text() if det_item else "—")
+
+        b64 = self._db.get_inspection_image(piece_id)   # lazy: query รูปเดี่ยวตอนคลิก
         if not b64:
             self._current_pixmap = None
             self._fullscreen_btn.setEnabled(False)
@@ -530,10 +700,7 @@ class DbViewerDialog(QDialog):
         if confirm != QMessageBox.Yes:
             return
         self._db.clear_image_b64(piece_id)
-        # อัปเดต local cache + preview
-        row_idx = self._table.row(self._table.selectedItems()[0])
-        if row_idx < len(self._row_images):
-            self._row_images[row_idx] = ""
+        # รูปโหลด lazy อยู่แล้ว — แค่เคลียร์ preview พอ (คลิกซ้ำจะขึ้น "ไม่มีภาพ")
         self._current_pixmap = None
         self._fullscreen_btn.setEnabled(False)
         self._preview_label.setPixmap(QPixmap())
@@ -553,20 +720,11 @@ class DbViewerDialog(QDialog):
         if confirm != QMessageBox.Yes:
             return
         self._db.delete_inspection(piece_id)
-        row_idx = self._table.row(self._table.selectedItems()[0])
-        self._table.removeRow(row_idx)
-        if row_idx < len(self._row_images):
-            self._row_images.pop(row_idx)
-        self._table.clearSelection()   # ป้องกัน index out of sync
-
-        # Sync counters: recalc จาก DB จริง แล้วอัพ stats bar + batch list item
+        # recalc counter ใน DB (batches table) ให้ตรง แล้ว reload หน้าปัจจุบัน
         if self._current_batch:
-            total, ng = self._db.recalculate_batch_counters(self._current_batch)
-            self._update_stats_bar(total, ng)
-        self._preview_label.setPixmap(QPixmap())
-        self._preview_label.setText("— เลือก row ที่เป็น NG เพื่อดูภาพ —")
-        self._current_pixmap = None
-        self._fullscreen_btn.setEnabled(False)
+            self._db.recalculate_batch_counters(self._current_batch)
+        self._table.clearSelection()
+        self._reload_page()   # repopulate + stats + clear preview
 
     @Slot()
     def _delete_current_batch(self) -> None:
@@ -583,10 +741,11 @@ class DbViewerDialog(QDialog):
         self._db.delete_batch_inspections(self._current_batch)
         self._load_batches()   # refresh batch list ฝั่งซ้าย
         self._table.setRowCount(0)
-        self._row_images.clear()
-        self._stat_total.setText("Total: 0")
-        self._stat_ng.setText("NG: 0")
-        self._stat_rate.setText("Quality Rate: —")
+        self._ok_chip.setText("OK: 0")
+        self._ng_chip.setText("NG: 0")
+        self._page_label.setText("Showing 0-0 of 0 records")
+        self._id_chip.setText("ID: —")
+        self._defect_type_label.setText("—")
         self._preview_label.setPixmap(QPixmap())
         self._preview_label.setText("— เลือก row ที่เป็น NG เพื่อดูภาพ —")
         self._current_pixmap = None
@@ -815,6 +974,100 @@ class DbViewerDialog(QDialog):
                 font-weight: bold;
                 color: #1a1d23;
                 padding: 4px 8px;
+            }
+
+            /* ── Top bar ─────────────────────────────────────────────── */
+            #topBar {
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+            }
+            #topBar QDateEdit {
+                background: #ffffff;
+                border: 1px solid #cbd1d9;
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 13px;
+                min-width: 110px;
+            }
+            #showingLabel {
+                font-size: 13px;
+                color: #52606d;
+                padding: 0 8px;
+            }
+            #pageIconBtn {
+                background: #ffffff;
+                color: #1565c0;
+                border: 1px solid #cbd1d9;
+                border-radius: 6px;
+                font-size: 15px;
+                font-weight: bold;
+            }
+            #pageIconBtn:hover:!disabled  { background: #e3f2fd; border-color: #1565c0; }
+            #pageIconBtn:disabled         { color: #cbd1d9; }
+
+            /* ── Panel header + chips ────────────────────────────────── */
+            #panelHeader {
+                font-size: 15px;
+                font-weight: bold;
+                color: #1a1d23;
+            }
+            #okChip {
+                background: #e8f5e9;
+                color: #2e7d32;
+                border-radius: 11px;
+                padding: 3px 12px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            #ngChip {
+                background: #ffebee;
+                color: #c62828;
+                border-radius: 11px;
+                padding: 3px 12px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            #idChip {
+                background: #eef0f3;
+                color: #52606d;
+                border-radius: 11px;
+                padding: 3px 12px;
+                font-family: "Consolas", monospace;
+                font-size: 12px;
+                font-weight: bold;
+            }
+
+            /* ── Verdict pills (table cellWidget) ────────────────────── */
+            #verdictPillOK {
+                background: #e8f5e9;
+                color: #2e7d32;
+                border-radius: 11px;
+                padding: 2px 14px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            #verdictPillNG {
+                background: #ffebee;
+                color: #c62828;
+                border-radius: 11px;
+                padding: 2px 14px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+
+            /* ── Preview footer ──────────────────────────────────────── */
+            #footerCaption {
+                font-size: 11px;
+                font-weight: bold;
+                letter-spacing: 1px;
+                color: #7b8794;
+            }
+            #defectTypeValue {
+                font-size: 14px;
+                font-weight: bold;
+                color: #c62828;
+                padding-left: 8px;
             }
 
             /* Button palette (secondaryBtn/dangerBtn) — defined canonically in MainWindow QSS */

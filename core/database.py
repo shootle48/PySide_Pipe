@@ -229,6 +229,82 @@ class DatabaseManager:
             for row in rows
         ]
 
+    # ── Paginated + date-filtered query (DB Viewer) ────────────────────────
+
+    @staticmethod
+    def _build_inspection_filter(
+        batch_id: str,
+        date_from: "str | None",
+        date_to: "str | None",
+        verdict: "str | None",
+    ) -> "tuple[str, list]":
+        """สร้าง WHERE clause + params แบบ dynamic (ใช้ร่วม count + page query)"""
+        where = ["batch_id = ?"]
+        params: list = [batch_id]
+        if date_from is not None:
+            where.append("timestamp >= ?")
+            params.append(date_from)
+        if date_to is not None:
+            where.append("timestamp < ?")        # exclusive upper bound
+            params.append(date_to)
+        if verdict is not None:
+            where.append("verdict = ?")
+            params.append(verdict)
+        return " AND ".join(where), params
+
+    def count_inspections(
+        self,
+        batch_id: str,
+        date_from: "str | None" = None,
+        date_to: "str | None" = None,
+        verdict: "str | None" = None,
+    ) -> int:
+        """นับจำนวน inspection ตาม filter (ไว้คำนวณจำนวนหน้า + stats)"""
+        clause, params = self._build_inspection_filter(batch_id, date_from, date_to, verdict)
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT COUNT(*) FROM inspections WHERE {clause}", params
+            ).fetchone()
+        return int(row[0] or 0)
+
+    def get_inspections_page(
+        self,
+        batch_id: str,
+        date_from: "str | None" = None,
+        date_to: "str | None" = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        """ดึง inspection 1 หน้า — **ไม่ดึง image_b64** (ตัวหนัก) เพื่อประหยัด RAM
+        รูปโหลดทีหลังตอนคลิกผ่าน get_inspection_image()
+        """
+        clause, params = self._build_inspection_filter(batch_id, date_from, date_to, None)
+        with self._lock:
+            rows = self._conn.execute(
+                f"""
+                SELECT piece_id, verdict, timestamp, detections, detected_size
+                FROM   inspections
+                WHERE  {clause}
+                ORDER  BY id DESC
+                LIMIT  ? OFFSET ?
+                """,
+                [*params, int(limit), int(offset)],
+            ).fetchall()
+        return [
+            {**dict(row), "detections": self._safe_json_loads(row["detections"])}
+            for row in rows
+        ]
+
+    def get_inspection_image(self, piece_id: str) -> "str | None":
+        """โหลด image_b64 ของ record เดียว (lazy — เรียกตอน user คลิกแถว)"""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT image_b64 FROM inspections WHERE piece_id = ?", (piece_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        return row["image_b64"] or None
+
     def get_all_inspections_with_images(self) -> list[dict]:
         """ดึง inspection ทั้งหมดที่มีรูป (NG) ข้ามทุก batch — สำหรับ Dataset Export"""
         with self._lock:
