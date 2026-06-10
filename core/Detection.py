@@ -286,7 +286,7 @@ class Detection:
         inner_pipe_masked = cv2.bitwise_and(gray, inner_pipe_mask)
         self.inner_pipe_masked = inner_pipe_masked
 
-        th         = cv2.bitwise_and(adaptive_threshold, adaptive_threshold, mask=mask_inner)
+        th         = cv2.bitwise_and(adaptive_threshold, adaptive_threshold, mask=inner_pipe_mask)
         self.thresh = th
         t_thresh = _ms(t)
 
