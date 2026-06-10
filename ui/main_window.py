@@ -1337,6 +1337,8 @@ class MainWindow(QMainWindow):
                 background: #ffffff;
                 margin: 10px 10px 10px 6px;
             }
+            /* label ใน infoPanel โปร่งใส — ไม่ให้พื้นขาว global ขึ้นเป็นกล่องบนการ์ด */
+            #infoPanel QLabel { background: transparent; }
 
             /* ── Cards ────────────────────────────────────────────────── */
             #card {
@@ -1534,6 +1536,10 @@ class MainWindow(QMainWindow):
                 background: #ffffff;
                 color: #1a1d23;
                 font-size: 14px;
+            }
+            /* label ใน alert/dialog โปร่งใส — ไม่ให้พื้น global ขึ้นเป็นกล่อง */
+            QMessageBox QLabel, QInputDialog QLabel {
+                background: transparent;
             }
             QDialog QPushButton, QMessageBox QPushButton, QInputDialog QPushButton {
                 min-height: 34px;

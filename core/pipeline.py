@@ -123,6 +123,7 @@ class PipeInspector:
         det = Detection(frame_bgr, size=size, defthresh_pct=_pct)
         vis = det.vis   # BGR image ที่ Detection วาด bbox + verdict ลงแล้ว
         verdict = det.verdict
+        defects = "det.defects"
 
         # encode vis → base64 JPEG (BGR → RGB ก่อน)
         vis_rgb = cv2.cvtColor(vis, cv2.COLOR_BGR2RGB)

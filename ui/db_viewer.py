@@ -43,6 +43,28 @@ from core.utils     import iso_to_local_str
 # จำนวน inspection ต่อหน้า (แบ่งหน้าเพื่อไม่โหลดทั้งหมดเข้า RAM)
 _PAGE_SIZE = 10
 
+# QSS ขยายปฏิทินให้จิ้มง่ายบน touchscreen (cells/buttons ใหญ่ขึ้น)
+_CALENDAR_QSS = """
+QCalendarWidget QAbstractItemView {
+    font-size: 18px;
+    selection-background-color: #1565c0;
+    selection-color: #ffffff;
+}
+QCalendarWidget QWidget#qt_calendar_navigationbar { min-height: 44px; }
+QCalendarWidget QToolButton { min-height: 40px; min-width: 44px; font-size: 16px; icon-size: 28px; }
+QCalendarWidget QSpinBox { font-size: 16px; min-height: 32px; }
+"""
+
+# QSS pill verdict — ใส่ตรงบน QLabel เอง (inline) ไม่พึ่ง cascade จาก dialog
+_PILL_QSS_OK = (
+    "QLabel { background:#c8e6c9; color:#1b5e20; border-radius:12px;"
+    " padding:3px 16px; font-weight:bold; font-size:13px; }"
+)
+_PILL_QSS_NG = (
+    "QLabel { background:#ffcdd2; color:#b71c1c; border-radius:12px;"
+    " padding:3px 16px; font-weight:bold; font-size:13px; }"
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,7 +86,7 @@ class DbViewerDialog(QDialog):
         self._page       = 0
         self._page_size  = _PAGE_SIZE
         self._total      = 0
-        self._date_from: "str | None" = None   # UTC ISO bound (None = ไม่กรอง)
+        self._date_from: "str | None" = None 
         self._date_to:   "str | None" = None
 
         self.setWindowTitle("Database Viewer")
@@ -141,6 +163,14 @@ class DbViewerDialog(QDialog):
 
     # ── Top bar: date filter + pagination ───────────────────────────────
 
+    def _enlarge_calendar(self, date_edit: QDateEdit) -> None:
+        """ขยายปฏิทิน popup ให้จิ้มง่ายบน touchscreen (ไม่แตะ locale — เลขยังอารบิก)"""
+        cal = date_edit.calendarWidget()
+        cal.setMinimumSize(420, 360)
+        cal.setFont(QFont("Segoe UI", 14))
+        cal.setGridVisible(True)
+        cal.setStyleSheet(_CALENDAR_QSS)
+
     def _build_topbar(self) -> QWidget:
         bar = QFrame()
         bar.setObjectName("topBar")
@@ -158,6 +188,7 @@ class DbViewerDialog(QDialog):
         self._date_from_edit.setDisplayFormat("dd/MM/yyyy")
         self._date_from_edit.setDate(QDate.currentDate().addDays(-7))
         self._date_from_edit.setLocale(_en_locale)
+        self._enlarge_calendar(self._date_from_edit)
         self._date_from_edit.dateChanged.connect(self._on_apply_filter)
         row.addWidget(self._date_from_edit)
 
@@ -169,10 +200,11 @@ class DbViewerDialog(QDialog):
         self._date_to_edit.setDisplayFormat("dd/MM/yyyy")
         self._date_to_edit.setDate(QDate.currentDate())
         self._date_to_edit.setLocale(_en_locale)
+        self._enlarge_calendar(self._date_to_edit)
         self._date_to_edit.dateChanged.connect(self._on_apply_filter)
         row.addWidget(self._date_to_edit)
-
-        self._clear_filter_btn = QPushButton("ดูทั้งหมด")
+        
+        self._clear_filter_btn = QPushButton("รีเซ็ต")
         self._clear_filter_btn.setObjectName("secondaryBtn")
         self._clear_filter_btn.setFixedHeight(34)
         self._clear_filter_btn.clicked.connect(self._on_clear_filter)
@@ -256,6 +288,8 @@ class DbViewerDialog(QDialog):
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.setAlternatingRowColors(True)
         self._table.verticalHeader().setVisible(False)
+        # แถวสูงพอให้ verdict pill (cellWidget) แสดงเต็มไม่ถูก clip + จิ้ม touch ง่าย
+        self._table.verticalHeader().setDefaultSectionSize(48)
         self._table.setColumnWidth(0, 70)
         self._table.setColumnWidth(1, 100)
         self._table.setColumnWidth(2, 200)
@@ -358,7 +392,8 @@ class DbViewerDialog(QDialog):
 
         for b in batches:
             active_mark = "  ●" if b["is_active"] else ""
-            started = b["started_at"][:16].replace("T", " ")
+            # แปลงเป็น local time ให้ตรงกับ timestamp ของชิ้น (ไม่งั้นเหลื่อม UTC 7 ชม.)
+            started = iso_to_local_str(b["started_at"], fmt="%Y-%m-%d %H:%M")
             text = (
                 f"{b['id']}{active_mark}\n"
                 f"  {started}   Total: {b['total']}   NG: {b['ng']}"
@@ -400,13 +435,18 @@ class DbViewerDialog(QDialog):
             no_item.setData(Qt.UserRole, row_data["piece_id"])  # เก็บ piece_id ไว้ใช้ delete/clear
             self._table.setItem(row_idx, 0, no_item)
 
-            # Verdict — pill badge (cellWidget โค้งมน) ; โปร่งใสต่อ mouse → คลิกแล้ว row ยัง select ได้
+            # Verdict — pill (cellWidget) ใส่ stylesheet ตรงบน pill เอง (inline)
+            # ไม่พึ่ง QSS cascade จาก dialog (เพี้ยนบน Windows) และ cellWidget ไม่โดน
+            # ::item override (ต่างจาก setBackground บน QTableWidgetItem ที่ Qt เพิกเฉย)
             verdict = row_data["verdict"]
             pill = QLabel(verdict)
             pill.setAlignment(Qt.AlignCenter)
-            pill.setObjectName("verdictPillOK" if verdict == "OK" else "verdictPillNG")
+            pill.setMinimumHeight(24)
+            pill.setStyleSheet(_PILL_QSS_OK if verdict == "OK" else _PILL_QSS_NG)
             wrap = QWidget()
             wrap.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            # โปร่งใส — ไม่ให้พื้นเทา global ขึ้นเป็นกล่องหลัง pill
+            # (ปลอดภัยแล้ว เพราะ pill ใช้ inline QSS ไม่พึ่ง cascade จาก dialog)
             wrap.setStyleSheet("background: transparent;")
             wl = QHBoxLayout(wrap)
             wl.setContentsMargins(8, 4, 8, 4)
@@ -982,6 +1022,8 @@ class DbViewerDialog(QDialog):
                 border: 1px solid #e2e8f0;
                 border-radius: 8px;
             }
+            /* label ใน topBar โปร่งใส — ไม่ให้พื้นเทา global ขึ้นเป็นกล่อง */
+            #topBar QLabel { background: transparent; }
             #topBar QDateEdit {
                 background: #ffffff;
                 border: 1px solid #cbd1d9;
@@ -994,6 +1036,7 @@ class DbViewerDialog(QDialog):
                 subcontrol-origin: padding;
                 subcontrol-position: center right;
                 width: 22px;
+                background: transparent;
                 border-left: 1px solid #cbd1d9;
             }
 
@@ -1057,6 +1100,7 @@ class DbViewerDialog(QDialog):
 
             /* ── Panel header + chips ────────────────────────────────── */
             #panelHeader {
+                background: transparent;
                 font-size: 15px;
                 font-weight: bold;
                 color: #1a1d23;
@@ -1078,10 +1122,9 @@ class DbViewerDialog(QDialog):
                 font-weight: bold;
             }
             #idChip {
-                background: #eef0f3;
+                background: transparent;
                 color: #52606d;
-                border-radius: 11px;
-                padding: 3px 12px;
+                padding: 3px 4px;
                 font-family: "Consolas", monospace;
                 font-size: 12px;
                 font-weight: bold;
@@ -1107,12 +1150,14 @@ class DbViewerDialog(QDialog):
 
             /* ── Preview footer ──────────────────────────────────────── */
             #footerCaption {
+                background: transparent;
                 font-size: 11px;
                 font-weight: bold;
                 letter-spacing: 1px;
                 color: #7b8794;
             }
             #defectTypeValue {
+                background: transparent;
                 font-size: 14px;
                 font-weight: bold;
                 color: #c62828;
@@ -1189,6 +1234,7 @@ class DbViewerDialog(QDialog):
                 font-size: 14px;
             }
             QMessageBox QLabel {
+                background: transparent;
                 color: #1a1d23;
                 font-size: 14px;
             }

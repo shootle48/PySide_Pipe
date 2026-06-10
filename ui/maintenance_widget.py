@@ -349,6 +349,8 @@ class MaintenanceWidget(QWidget):
                 border: 2px solid #cbd1d9;
                 border-radius: 8px;
             }
+            /* label ใน statusBox โปร่งใส — ไม่ให้พื้นขาว global ขึ้นเป็นกล่อง */
+            #statusBox QLabel { background: transparent; }
             #statusTitle {
                 color: #52606d;
                 font-size: 11px;
