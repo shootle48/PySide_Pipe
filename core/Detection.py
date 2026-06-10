@@ -129,9 +129,8 @@ class Detection:
             "Detection [%s]: [STEP] รับ threshold = %.2f%% ของพื้นที่วงใน",
             size, self.defthresh_pct,
         )
-        self.thresh_px2 = None   # px² จริง — คำนวณตอน processing (ต้องรู้ r_inner)
-
-        
+        self.thresh_px1 = None
+        self.thresh_px2 = None   # px² จริง — คำนวณตอน processing (ต้องรู้ r_inner)        
         self.size  = size
         self.cfg   = dict(SIZE_MAPPING[size])
         self.error               = None
@@ -151,6 +150,9 @@ class Detection:
         self.r_inner = None
         self.masked_pipe_land = None
         self.inner_pipe_masked = None
+
+        self.defect1 = False
+        self.defect2 = False
         
         self.processing()
 
@@ -160,6 +162,8 @@ class Detection:
             "result":  self.verdict,
             "error":    self.error,
             "vis":      self.vis,
+            "defect1" : self.defect1, # รอยแตก
+            "defect2" : self.defect2 # เศษขี้เหล็ก
         }
 
     def _hough_circles(self, img_gray: np.ndarray, circle_key: str) -> "np.ndarray | None":
@@ -289,6 +293,15 @@ class Detection:
         contours_land, _ = cv2.findContours(clean_land, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         all_areas_land = [(c, cv2.contourArea(c)) for c in contours_land]
         
+        inner_area_px1 = float((np.pi * (r_outer_shrink ** 2)) - (np.pi * (r_mid ** 2)))
+        self.thresh_px1 = (self.defthresh_pct / 100.0) * inner_area_px1
+        logger.info(
+            "Detection [%s]: [STEP] threshold %.2f%% × พื้นที่ตรวจ %.0f px² ขนาด Defect = %.0f px²",
+            self.size, self.defthresh_pct, inner_area_px1, self.thresh_px1,
+        )
+        defects_land   = [c for c, area in all_areas_land if area >= self.thresh_px1]
+        self.defect1 = len(defects_land > 0)
+        
         t = time.perf_counter()
         inner_pipe_mask = np.zeros(gray.shape, dtype=np.uint8)
         cv2.circle(inner_pipe_mask, (cx, cy), r_inner_final, 255, -1)
@@ -321,8 +334,9 @@ class Detection:
 
         contours, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         all_areas = [(c, cv2.contourArea(c)) for c in contours]
-        defects_land   = [c for c, area in all_areas_land if area >= self.thresh_px2]
         defects  = [c for c, area in all_areas if area >= self.thresh_px2]
+        self.defect2 = len(defects > 0)
+
         defects_all = defects_land + defects  # รวม defect ทั้ง land และ inner
         verdict = "NG" if defects_all else "OK"
 
@@ -368,14 +382,14 @@ class Detection:
 
         for c in defects_land:
             bx, by, bw, bh = cv2.boundingRect(c)
-            cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (0, 0, 255), 2)
-            cv2.putText(vis, f"Defect", (bx, by - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+            cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (255, 0, 0), 2)
+            cv2.putText(vis, f"รอยแตก", (bx, by - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
         for c in defects:
             bx, by, bw, bh = cv2.boundingRect(c)
             cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (255, 0, 0), 2)
-            cv2.putText(vis, "Defect", (bx, by - 10),
+            cv2.putText(vis, "เศษขี้เหล็ก", (bx, by - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
         color = (255, 0, 0) if verdict == "NG" else (0, 200, 0)
         cv2.putText(vis, verdict, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
