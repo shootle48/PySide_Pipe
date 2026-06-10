@@ -288,7 +288,6 @@ class Detection:
         self.clean_land = clean_land
         contours_land, _ = cv2.findContours(clean_land, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         all_areas_land = [(c, cv2.contourArea(c)) for c in contours_land]
-        defects_land   = [c for c, area in all_areas_land if area >= self.min_defect]
         
         t = time.perf_counter()
         inner_pipe_mask = np.zeros(gray.shape, dtype=np.uint8)
@@ -322,13 +321,14 @@ class Detection:
 
         contours, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         all_areas = [(c, cv2.contourArea(c)) for c in contours]
+        defects_land   = [c for c, area in all_areas_land if area >= self.thresh_px2]
         defects  = [c for c, area in all_areas if area >= self.thresh_px2]
         defects_all = defects_land + defects  # รวม defect ทั้ง land และ inner
         verdict = "NG" if defects_all else "OK"
 
         self.defects = defects_all
         self.verdict = verdict
-        
+
         t_contour = _ms(t)
 
         # อธิบาย threshold ที่ใช้จริง (สำหรับ debug)
