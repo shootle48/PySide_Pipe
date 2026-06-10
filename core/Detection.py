@@ -26,48 +26,57 @@ def _ms(t0: float) -> float:
     """คืน elapsed ms จาก t0 (perf_counter)"""
     return (time.perf_counter() - t0) * 1000
 
-SIZE_DEF = {
+SIZE_MAPPING = {
     "L": {
-        "outer_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
-                             minRadius=180, maxRadius=185),
+        "outer_circle": dict(dp=1, #ความละเอียดในการคำนวณ
+                             minDist=3000, #ระยะห่างขั้นต่ำระหว่างวงกลม (px)
+                             param1=50, #ความไวในการตรวจขอบ (edge detection threshold) ยิ่งน้อยยิ่งไว ตรวจเจอขอบได้ง่ายขึ้นแต่ก็ได้ขอบปลอมมากขึ้นด้วย
+                             param2=15, #คะแนนการ Vote ที่จะมองว่าเป็นวงกลมยิ่งตั้งสูงยิ่งต้องเป็นวงกลมมากๆ
+                             minRadius=180, maxRadius=185), #min/max ของรัศมีวงกลมที่ต้องการ
+        "mid_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
+                             minRadius=135, maxRadius=140),
         "inner_circle": dict(dp=1, minDist=200,  param1=50, param2=15,
-                             minRadius=90,  maxRadius=100),
-        "outer_shrink":    0.70,
+                             minRadius=95,  maxRadius=100), 
+        "outer_shrink":    0.95,
         "inner_shrink":    0.90,
         "thresh_block":    301,
         "thresh_c":        1,
         "blur_ksize":      7,
         "morph_kernel":    5,
         "morph_iter":      1,
-        "min_defect_area": 500,
+        "max_defect_area": 30000,
     },
     "M": {
         "outer_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
                              minRadius=150, maxRadius=155),
+        "mid_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
+                             minRadius=100, maxRadius=105),
         "inner_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
                              minRadius=65,  maxRadius=70),
-        "outer_shrink":    0.70,
+        "outer_shrink":    0.85,
         "inner_shrink":    0.90,
         "thresh_block":    301,
         "thresh_c":        1,
         "blur_ksize":      7,
         "morph_kernel":    5,
         "morph_iter":      1,
-        "min_defect_area": 500,
+        "max_defect_area": 15000,
     },
     "S": {
-        "outer_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
-                             minRadius=95,  maxRadius=100),
-        "inner_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
-                             minRadius=40,  maxRadius=45),
-        "outer_shrink":    0.70,
+        "outer_circle": dict(dp=1, minDist=3000, param1=25, param2=30,
+                             minRadius=80,  maxRadius=90),
+        "mid_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
+                             minRadius=55, maxRadius=60),
+        "inner_circle": dict(dp=1, minDist=3000, param1=75, param2=15,
+                             minRadius=35,  maxRadius=40),
+        "outer_shrink":    0.90,
         "inner_shrink":    0.90,
         "thresh_block":    301,
         "thresh_c":        1,
         "blur_ksize":      7,
         "morph_kernel":    5,
         "morph_iter":      1,
-        "min_defect_area": 500,
+        "max_defect_area": 6000,
     },
 }
 
@@ -75,9 +84,10 @@ def _build_cuda_detectors() -> dict:
     if not _USE_CUDA:
         return {}
     cache = {}
-    for size, cfg in SIZE_DEF.items():
+    for size, cfg in SIZE_MAPPING.items():
         cache[size] = {
             "outer": _make_cuda_detector(cfg["outer_circle"]),
+            "mid"  : _make_cuda_detector(cfg["mid_circle"]),
             "inner": _make_cuda_detector(cfg["inner_circle"]),
         }
         logger.debug("Detection: pre-built CUDA detectors for size %s", size)
@@ -103,16 +113,17 @@ class Detection:
     def __init__(self, image: np.ndarray, size: str, defthresh_pct: float = 0.0):
         size = size.upper().strip()
         if size not in self.VALID_SIZES:
-            raise ValueError(f"size must be one of {self.VALID_SIZES}, got '{size}'")
+            size = "M"
+            logger.warning("Wrong Definition of Size, the system changes it to M size as the default")
 
         # threshold = % ของพื้นที่วงใน (pct/100 × พื้นที่วงในจริง คำนวณตอน processing)
         # default 0.0 → 0% → 0 px² = เข้มงวดสุด (production ไม่ override ก็ใช้ค่านี้)
         pct = 0.0 if defthresh_pct is None else float(defthresh_pct)
         self.defthresh_pct = max(self.PCT_MIN, min(self.PCT_MAX, pct))
-        if self.defthresh_pct != pct:
+        if pct < self.PCT_MIN or pct > self.PCT_MAX:
             logger.warning(
-                "Detection [%s]: defthresh_pct=%s clamped to %.2f (ช่วง 0–100%%)",
-                size, defthresh_pct, self.defthresh_pct,
+                "Detection [%s]: defthresh_pct=%s clamped to %s (valid range %s–%s%%)",
+                size, pct, self.defthresh_pct, self.PCT_MIN, self.PCT_MAX,
             )
         logger.info(
             "Detection [%s]: [STEP] รับ threshold = %.2f%% ของพื้นที่วงใน",
@@ -120,31 +131,35 @@ class Detection:
         )
         self.thresh_px2 = None   # px² จริง — คำนวณตอน processing (ต้องรู้ r_inner)
 
-        self.image = image
+        
         self.size  = size
-        self.cfg   = dict(SIZE_DEF[size])
-        self.success             = False
+        self.cfg   = dict(SIZE_MAPPING[size])
         self.error               = None
         self.verdict             = None
-        self.defects             = []
+        h, w = image.shape[:2]
+        if (w, h) != (1280, 720):
+            image = cv2.resize(image, (1280, 720), interpolation=cv2.INTER_LINEAR)
+            logger.info(
+                "Detection [%s]: resized %dx%d → %dx%d",
+                size, w, h, 1280, 720,
+            )
+        self.image = image
         self.vis                 = image.copy()
-        self.thresh              = None
         self.clean               = None
-        self.roi_inner           = None
-        self.roi_inner_raw       = None
-        self.inner_circle_masked = None
+        self.masked_pipe         = None
+        self.inner_roi      = None
+        self.r_inner = None
+        self.masked_pipe_land = None
+        self.inner_pipe_masked = None
         
         self.processing()
 
     @property
     def output(self):
         return {
-            "result":  self.verdict,    # "OK" / "NG"
-            "success":  self.success,   # True/False
-            "error":    self.error,     # error message
-            "vis":      self.vis,       # Result Image
-            "defects":  self.defects,   # list of contours
-            "defect_areas": [int(cv2.contourArea(c)) for c in self.defects],
+            "result":  self.verdict,
+            "error":    self.error,
+            "vis":      self.vis,
         }
 
     def _hough_circles(self, img_gray: np.ndarray, circle_key: str) -> "np.ndarray | None":
@@ -172,6 +187,9 @@ class Detection:
     def processing(self):
         cfg   = self.cfg
         t_all = time.perf_counter()
+        logs = {
+            "size": self.size
+        }
 
         # ── 1. Preprocess ─────────────────────────────────────────────────
         t = time.perf_counter()
@@ -188,12 +206,12 @@ class Detection:
 
         # ── 2. Outer HoughCircles ─────────────────────────────────────────
         t = time.perf_counter()
-        circles = self._hough_circles(gray, "outer")
+        outer_circle = self._hough_circles(gray, "outer")
         t_outer = _ms(t)
 
-        if circles is None:
+        if outer_circle is None:
             logger.warning("Detection [Size %s]: Pipe not found", self.size)
-            self.error   = f"[Size {self.size}] No Pipe Detected"
+            self.error   = f"[Size {self.size}] Pipe not found"
             self.verdict = "NG"
             cv2.putText(self.vis, self.error,
                         (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2)
@@ -203,27 +221,44 @@ class Detection:
             )
             return
 
-        x, y, r_outer = np.round(circles[0]).astype(int)[0]
+        ax, ay, r_outer  = np.round(outer_circle[0]).astype(int)[0]
         logger.debug("Detection [Size %s]: outer center=(%d,%d) r=%d",
-                     self.size, x, y, r_outer)
+                     self.size, ax, ay, r_outer)
 
-        r_shrink  = int(r_outer * cfg["outer_shrink"])
-        mask_roi  = np.zeros_like(gray)
-        cv2.circle(mask_roi, (x, y), r_shrink, 255, -1)
-        roi_inner      = cv2.bitwise_and(blur, mask_roi)
-        self.roi_inner = roi_inner
+        r_outer_shrink  = int(r_outer * cfg["outer_shrink"])
+        logs["r_outer"] = int(r_outer)
+        pipe_mask  = np.zeros_like(gray)
+        cv2.circle(pipe_mask, (ax, ay), r_outer_shrink, 255, -1)
+        masked_pipe      = cv2.bitwise_and(gray, pipe_mask)
+        self.masked_pipe = masked_pipe
+
+        mid_circle = self._hough_circles(masked_pipe, "mid")
+        if mid_circle is None:
+            logger.warning("Detection [%s]: Mid Pipe not found", self.size)
+            self.error = f"Detection [{self.size}]: Pipe not found"
+            self.verdict = "NG"
+            cv2.putText(self.vis, self.error,
+                        (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2)
+            return
+        
+        bx, by, r_mid = np.round(mid_circle[0]).astype(int)[0]
+        logs["r_mid"] = int(r_mid)
+        mid_circle_mask  = np.zeros_like(gray)
+        cv2.circle(mid_circle_mask, (bx, by), r_mid, 255, -1)
+        inner_roi = cv2.bitwise_and(gray, mid_circle_mask)
+        self.inner_roi = inner_roi
 
         # ── 3. Inner HoughCircles ─────────────────────────────────────────
         t = time.perf_counter()
-        inner_circles = self._hough_circles(roi_inner, "inner")
+        inner_circle = self._hough_circles(inner_roi, "inner")
         t_inner = _ms(t)
 
-        if inner_circles is None:
+        if inner_circle is None:
             logger.warning("Detection [Size %s]: Inner Pipe Not Detected", self.size)
             self.error   = f"[Size {self.size}] Inner Pipe Not Detected"
             self.verdict = "NG"
             if DEBUG_DRAW:   # วงนอกเจอ — โชว์ไว้ debug ว่า inner fail ตรงไหน
-                cv2.circle(self.vis, (x, y), r_outer, (0, 255, 0), 2)
+                cv2.circle(self.vis, (ax, ay), r_outer, (0, 255, 0), 2)
             cv2.putText(self.vis, self.error,
                         (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2)
             logger.info(
@@ -232,24 +267,32 @@ class Detection:
             )
             return
 
-        cx, cy, r_inner_raw = np.round(inner_circles[0]).astype(int)[0]
-        self.roi_inner_raw  = r_inner_raw
-        r_inner = max(int(r_inner_raw * cfg["inner_shrink"]), 10)
+        cx, cy, r_inner = np.round(inner_circle[0]).astype(int)[0]
+        self.r_inner  = r_inner
+        r_inner_final = max(int(r_inner * cfg["inner_shrink"]), 10)
         logger.debug("Detection [Size %s]: inner center=(%d,%d) r=%d",
-                     self.size, cx, cy, r_inner)
+                     self.size, cx, cy, r_inner_final)
 
         # ── 4. Threshold + Mask ───────────────────────────────────────────
+        pipe_land_mask = np.zeros_like(gray)
+        cv2.circle(pipe_land_mask, (ax, ay), r_outer_shrink, 255, -1)
+        cv2.circle(pipe_land_mask, (bx, by), r_mid, 0, -1)
+        masked_pipe_land = cv2.bitwise_and(gray, pipe_land_mask)
+        self.masked_pipe_land = masked_pipe_land
+        
         t = time.perf_counter()
-        mask_inner = np.zeros(gray.shape, dtype=np.uint8)
-        cv2.circle(mask_inner, (cx, cy), r_inner, 255, -1)
+        inner_pipe_mask = np.zeros(gray.shape, dtype=np.uint8)
+        cv2.circle(inner_pipe_mask, (cx, cy), r_inner_final, 255, -1)
+        inner_pipe_masked = cv2.bitwise_and(gray, inner_pipe_mask)
+        self.inner_pipe_masked = inner_pipe_masked
+
         th         = cv2.bitwise_and(adaptive_threshold, adaptive_threshold, mask=mask_inner)
         self.thresh = th
         t_thresh = _ms(t)
 
         # ── 5. Morphology ─────────────────────────────────────────────────
         t = time.perf_counter()
-        k      = cfg["morph_kernel"]
-        iters  = cfg["morph_iter"]
+        k , iters    = cfg["morph_kernel"], cfg["morph_iter"]
         kernel = np.ones((k, k), np.uint8)
         clean  = cv2.morphologyEx(th,    cv2.MORPH_OPEN,  kernel, iterations=iters)
         clean  = cv2.morphologyEx(clean, cv2.MORPH_CLOSE, kernel, iterations=iters)
@@ -306,8 +349,9 @@ class Detection:
         t = time.perf_counter()
         vis = self.image.copy()
         if DEBUG_DRAW:   # วงกลม debug เฉพาะ MA mode (ลูกค้าไม่เห็นใน production)
-            cv2.circle(vis, (x,  y),  r_outer, (0, 255, 0), 2)   # วงนอก = เขียว
-            cv2.circle(vis, (cx, cy), r_inner, (255, 0, 0), 2)   # วงใน  = น้ำเงิน
+            cv2.circle(vis, (ax,  ay),  r_outer, (255, 0, 255), 2)
+            cv2.circle(vis, (bx,  by),  r_mid, (0, 255, 255), 2)
+            cv2.circle(vis, (cx, cy), r_inner, (255, 144, 30), 2)
 
         for c in defects:
             bx, by, bw, bh = cv2.boundingRect(c)
