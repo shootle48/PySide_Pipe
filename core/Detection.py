@@ -366,6 +366,12 @@ class Detection:
             cv2.circle(vis, (bx,  by),  r_mid, (0, 255, 255), 2)
             cv2.circle(vis, (cx, cy), r_inner, (255, 144, 30), 2)
 
+        for c in defects_land:
+            bx, by, bw, bh = cv2.boundingRect(c)
+            cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (0, 0, 255), 2)
+            cv2.putText(vis, f"Defect", (bx, by - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+
         for c in defects:
             bx, by, bw, bh = cv2.boundingRect(c)
             cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (255, 0, 0), 2)
