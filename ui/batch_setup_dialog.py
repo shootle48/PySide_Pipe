@@ -207,47 +207,53 @@ class BatchSetupDialog(QDialog):
         self._threshold_frame = QFrame()
         self._threshold_frame.setObjectName("thresholdFrame")
         th_layout = QVBoxLayout(self._threshold_frame)
-        th_layout.setContentsMargins(12, 10, 12, 10)
-        th_layout.setSpacing(6)
+        th_layout.setContentsMargins(0, 6, 0, 0)
+        th_layout.setSpacing(8)
 
-        # Header row
-        th_header = QHBoxLayout()
-        th_title = QLabel("ความไวการตรวจจับ defect  [MA Mode]")
+        th_title = QLabel("ความไวการตรวจจับ DEFECT  [MA MODE]")
         th_title.setObjectName("sectionLabel")
-        th_header.addWidget(th_title)
-        th_header.addStretch()
-        self._default_btn = QPushButton("Default")
+        th_layout.addWidget(th_title)
+
+        # ค่า (ใหญ่ ซ้าย) + ปุ่ม DEFAULT (ขวา)
+        val_row = QHBoxLayout()
+        self._threshold_value_label = QLabel()
+        self._threshold_value_label.setObjectName("thresholdValue")
+        val_row.addWidget(self._threshold_value_label)
+        val_row.addStretch()
+        self._default_btn = QPushButton("DEFAULT")
         self._default_btn.setObjectName("defaultBtn")
-        self._default_btn.setFixedHeight(28)
+        self._default_btn.setFixedHeight(32)
+        self._default_btn.setCursor(Qt.PointingHandCursor)
         self._default_btn.clicked.connect(self._on_reset_threshold)
-        th_header.addWidget(self._default_btn)
-        th_layout.addLayout(th_header)
+        val_row.addWidget(self._default_btn)
+        th_layout.addLayout(val_row)
 
-        # Slider row
-        slider_row = QHBoxLayout()
-        lbl_strict = QLabel("เข้มงวดน้อย")
-        lbl_strict.setObjectName("dimLabel")
-        slider_row.addWidget(lbl_strict)
-
+        # Slider
         self._threshold_slider = QSlider(Qt.Horizontal)
         self._threshold_slider.setRange(_THRESHOLD_MIN, _THRESHOLD_MAX)
         self._threshold_slider.setSingleStep(_THRESHOLD_STEP)
         self._threshold_slider.setPageStep(_THRESHOLD_STEP * 2)
         self._threshold_slider.setValue(_THRESHOLD_DEFAULT)
-        self._threshold_slider.setFixedHeight(36)
+        self._threshold_slider.setFixedHeight(34)
         self._threshold_slider.valueChanged.connect(self._on_slider_changed)
-        slider_row.addWidget(self._threshold_slider, stretch=1)
+        th_layout.addWidget(self._threshold_slider)
 
-        lbl_loose = QLabel("เข้มงวดมาก")
-        lbl_loose.setObjectName("dimLabel")
-        slider_row.addWidget(lbl_loose)
-        th_layout.addLayout(slider_row)
-
-        # Value label
-        self._threshold_value_label = QLabel()
-        self._threshold_value_label.setObjectName("thresholdValue")
-        self._threshold_value_label.setAlignment(Qt.AlignCenter)
-        th_layout.addWidget(self._threshold_value_label)
+        # สเกล MIN / 50% / MAX (ใต้ slider)
+        scale_row = QHBoxLayout()
+        lbl_min = QLabel("MIN")
+        lbl_min.setObjectName("dimLabel")
+        lbl_mid = QLabel("50%")
+        lbl_mid.setObjectName("dimLabel")
+        lbl_mid.setAlignment(Qt.AlignCenter)
+        lbl_max = QLabel("MAX")
+        lbl_max.setObjectName("dimLabel")
+        lbl_max.setAlignment(Qt.AlignRight)
+        scale_row.addWidget(lbl_min)
+        scale_row.addStretch()
+        scale_row.addWidget(lbl_mid)
+        scale_row.addStretch()
+        scale_row.addWidget(lbl_max)
+        th_layout.addLayout(scale_row)
 
         root.addWidget(self._threshold_frame)
 
@@ -265,6 +271,7 @@ class BatchSetupDialog(QDialog):
         self._target_spin.setFixedHeight(50)
         self._target_spin.setObjectName("targetSpin")
         self._target_spin.setAlignment(Qt.AlignCenter)
+        self._target_spin.setButtonSymbols(QSpinBox.NoButtons)   # เอาลูกศรขึ้น/ลงออก
         # Force Arabic numerals (0-9) — ป้องกันเลขไทย (๐-๙) บน locale ภาษาไทย
         self._target_spin.setLocale(QLocale(QLocale.Language.English, QLocale.Country.UnitedStates))
         root.addWidget(self._target_spin)
@@ -355,6 +362,10 @@ class BatchSetupDialog(QDialog):
                 font-family: "Segoe UI", system-ui, sans-serif;
                 color: #1a1d23;
             }
+            /* แก้กล่องขาว: label/slider รับพื้น global ของ main window → บังคับโปร่งใส */
+            QLabel  { background: transparent; }
+            QSlider { background: transparent; }
+
             #dialogTitle {
                 font-size: 18px;
                 font-weight: bold;
@@ -369,9 +380,11 @@ class BatchSetupDialog(QDialog):
             }
             #dimLabel {
                 font-size: 11px;
-                color: #7b8794;
+                color: #9aa5b1;
+                font-weight: bold;
+                letter-spacing: 1px;
             }
-            /* ── Size button (QFrame) ── */
+            /* ── Size button (QFrame) — ตัวเลข + label (แบบเดิม) ── */
             #sizeBtn {
                 background: #ffffff;
                 border: 2px solid #cbd1d9;
@@ -401,27 +414,28 @@ class BatchSetupDialog(QDialog):
                 font-weight: normal;
                 color: #52606d;
             }
-            /* ── Threshold frame ── */
+            /* ── Threshold ── */
             #thresholdFrame {
                 background: transparent;
                 border: none;
             }
             #thresholdValue {
-                font-family: "Consolas", monospace;
-                font-size: 13px;
+                font-size: 20px;
                 font-weight: bold;
-                color: #1565c0;
+                color: #1a1d23;
             }
             #defaultBtn {
                 background: #ffffff;
                 color: #52606d;
-                border: 1px solid #a8b0ba;
-                border-radius: 5px;
+                border: 1px solid #cbd1d9;
+                border-radius: 6px;
                 font-size: 11px;
-                padding: 2px 8px;
+                font-weight: bold;
+                letter-spacing: 1px;
+                padding: 4px 14px;
             }
-            #defaultBtn:hover { background: #f1f3f6; }
-            /* ── Slider ── */
+            #defaultBtn:hover { background: #f1f3f6; border-color: #1565c0; color: #1565c0; }
+            /* ── Slider (ธีมน้ำเงินเดิม) ── */
             QSlider::groove:horizontal {
                 height: 6px;
                 background: #dde1e7;
@@ -449,6 +463,7 @@ class BatchSetupDialog(QDialog):
                 font-weight: bold;
                 padding: 4px 8px;
             }
+            /* ── Buttons ── */
             #okBtn {
                 background: #1565c0;
                 color: #ffffff;
