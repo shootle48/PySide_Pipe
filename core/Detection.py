@@ -383,13 +383,13 @@ class Detection:
         for c in defects_land:
             bx, by, bw, bh = cv2.boundingRect(c)
             cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (255, 0, 0), 2)
-            cv2.putText(vis, f"รอยแตก", (bx, by - 10),
+            cv2.putText(vis, f"Crack", (bx, by - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
         for c in defects:
             bx, by, bw, bh = cv2.boundingRect(c)
             cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (255, 0, 0), 2)
-            cv2.putText(vis, "เศษขี้เหล็ก", (bx, by - 10),
+            cv2.putText(vis, "Iron Dust", (bx, by - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
         color = (255, 0, 0) if verdict == "NG" else (0, 200, 0)
         cv2.putText(vis, verdict, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
