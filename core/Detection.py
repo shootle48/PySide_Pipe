@@ -279,6 +279,16 @@ class Detection:
         cv2.circle(pipe_land_mask, (bx, by), r_mid, 0, -1)
         masked_pipe_land = cv2.bitwise_and(gray, pipe_land_mask)
         self.masked_pipe_land = masked_pipe_land
+
+        th_land = cv2.bitwise_and(adaptive_threshold, adaptive_threshold, mask=pipe_land_mask)
+        k, iters = cfg["morph_kernel"], cfg["morph_iter"]
+        kernel = np.ones((k, k), np.uint8)
+        clean_land = cv2.morphologyEx(th_land, cv2.MORPH_OPEN,  kernel, iterations=iters)
+        clean_land = cv2.morphologyEx(clean_land, cv2.MORPH_CLOSE, kernel, iterations=iters)
+        self.clean_land = clean_land
+        contours_land, _ = cv2.findContours(clean_land, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        all_areas_land = [(c, cv2.contourArea(c)) for c in contours_land]
+        defects_land   = [c for c, area in all_areas_land if area >= self.min_defect]
         
         t = time.perf_counter()
         inner_pipe_mask = np.zeros(gray.shape, dtype=np.uint8)
@@ -313,9 +323,12 @@ class Detection:
         contours, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         all_areas = [(c, cv2.contourArea(c)) for c in contours]
         defects  = [c for c, area in all_areas if area >= self.thresh_px2]
-        verdict  = "NG" if defects else "OK"
-        self.defects = defects
+        defects_all = defects_land + defects  # รวม defect ทั้ง land และ inner
+        verdict = "NG" if defects_all else "OK"
+
+        self.defects = defects_all
         self.verdict = verdict
+        
         t_contour = _ms(t)
 
         # อธิบาย threshold ที่ใช้จริง (สำหรับ debug)
