@@ -41,7 +41,7 @@ SIZE_MAPPING = {
         "inner_shrink":    0.90,
         "thresh_block":    301,
         "thresh_c":        1,
-        "blur_ksize":      7,
+        "blur_ksize":      21,
         "morph_kernel":    5,
         "morph_iter":      1,
         "max_defect_area": 30000,
@@ -199,9 +199,16 @@ class Detection:
         # ── 1. Preprocess ─────────────────────────────────────────────────
         t = time.perf_counter()
         gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-        blur = cv2.GaussianBlur(gray, (cfg["blur_ksize"], cfg["blur_ksize"]), 0)
+        blur = cv2.medianBlur(gray, cfg["blur_ksize"])
         adaptive_threshold = cv2.adaptiveThreshold(
             blur, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV,
+            cfg["thresh_block"],
+            cfg["thresh_c"],
+        )
+        adaptive_threshold_2 = cv2.adaptiveThreshold(
+            gray, 255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY_INV,
             cfg["thresh_block"],
@@ -319,7 +326,7 @@ class Detection:
         inner_pipe_masked = cv2.bitwise_and(gray, inner_pipe_mask)
         self.inner_pipe_masked = inner_pipe_masked
 
-        th         = cv2.bitwise_and(adaptive_threshold, adaptive_threshold, mask=inner_pipe_mask)
+        th         = cv2.bitwise_and(adaptive_threshold_2, adaptive_threshold_2, mask=inner_pipe_mask)
         self.thresh = th
         t_thresh = _ms(t)
 
