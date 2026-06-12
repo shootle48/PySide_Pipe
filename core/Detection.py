@@ -37,7 +37,7 @@ SIZE_MAPPING = {
                              minRadius=135, maxRadius=140),
         "inner_circle": dict(dp=1, minDist=200,  param1=50, param2=15,
                              minRadius=95,  maxRadius=100), 
-        "outer_shrink":    0.95,
+        "outer_shrink":    0.90,
         "inner_shrink":    0.90,
         "thresh_block":    301,
         "thresh_c":        1,
@@ -150,7 +150,8 @@ class Detection:
         self.r_inner = None
         self.masked_pipe_land = None
         self.inner_pipe_masked = None
-
+        
+        self.defectCrack = None
         self.defect1 = False
         self.defect2 = False
         
@@ -294,13 +295,23 @@ class Detection:
         all_areas_land = [(c, cv2.contourArea(c)) for c in contours_land]
         
         inner_area_px1 = float((np.pi * (r_outer_shrink ** 2)) - (np.pi * (r_mid ** 2)))
-        self.thresh_px1 = (self.defthresh_pct / 100.0) * inner_area_px1
+        self.thresh_px1 = ((self.defthresh_pct / 100.0)*(1/39.8)) * inner_area_px1
         logger.info(
             "Detection [%s]: [STEP] threshold %.2f%% × พื้นที่ตรวจ %.0f px² ขนาด Defect = %.0f px²",
             self.size, self.defthresh_pct, inner_area_px1, self.thresh_px1,
         )
         defects_land   = [c for c, area in all_areas_land if area >= self.thresh_px1]
-        self.defect1 = len(defects_land > 0)
+        self.defect1 = len(defects_land)> 0
+
+        # log พื้นที่ contour โซน land (detect1) — เอาเฉพาะตัวเลข px² เรียงใหญ่→เล็ก
+        # (ห้าม print all_areas_land ตรงๆ — ข้างในมี contour ndarray ยาวมากอ่านไม่ได้)
+        areas_land = sorted((area for _, area in all_areas_land), reverse=True)
+        logger.info(
+            "Detection [%s]: [detect1/land] contours=%d | เกิน thresh=%d | areas(px²)=%s",
+            self.size, len(areas_land), len(defects_land),
+            [f"{a:.0f}" for a in areas_land],
+        )
+
         
         t = time.perf_counter()
         inner_pipe_mask = np.zeros(gray.shape, dtype=np.uint8)
@@ -326,7 +337,7 @@ class Detection:
 
         # แปลง threshold → px² : % ของพื้นที่วงใน
         inner_area_px2 = float(np.pi * (r_inner ** 2))
-        self.thresh_px2 = (self.defthresh_pct / 100.0) * inner_area_px2
+        self.thresh_px2 = ((self.defthresh_pct / 100.0)*(1/4.55)) * inner_area_px2
         logger.info(
             "Detection [%s]: [STEP] threshold %.2f%% × พื้นที่วงใน %.0f px² (r_inner=%d) = %.0f px²",
             self.size, self.defthresh_pct, inner_area_px2, r_inner, self.thresh_px2,
@@ -335,7 +346,7 @@ class Detection:
         contours, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         all_areas = [(c, cv2.contourArea(c)) for c in contours]
         defects  = [c for c, area in all_areas if area >= self.thresh_px2]
-        self.defect2 = len(defects > 0)
+        self.defect2 = len(defects)> 0
 
         defects_all = defects_land + defects  # รวม defect ทั้ง land และ inner
         verdict = "NG" if defects_all else "OK"
