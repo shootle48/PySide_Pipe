@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 import threading
 
-from PySide6.QtCore    import QLocale, Qt, QSettings, QTimer, Slot
+from PySide6.QtCore    import QLocale, QSize, Qt, QSettings, QTimer, Slot
 from PySide6.QtGui     import QColor, QFont, QIcon
 from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
@@ -742,8 +742,8 @@ class MainWindow(QMainWindow):
     # ── History helpers ────────────────────────────────────────────────────
 
     @staticmethod
-    def _format_history_item(result: dict) -> tuple[str, str, str]:
-        """Pure helper: build (display_text, fg_hex, bg_hex) from a result dict.
+    def _format_history_item(result: dict) -> tuple[str, str, str, str]:
+        """Pure helper: build (left_text, time_str, fg_hex, bg_hex) from a result dict.
 
         No widget interaction — safe to unit-test without a QApplication.
         """
@@ -756,22 +756,39 @@ class MainWindow(QMainWindow):
         detail    = confs[0]["label"].replace("_", " ") if confs else "No defect"
         tag       = "[OK]" if verdict == "OK" else "[NG]"
         size_code = (det_size[0] if det_size and det_size != "unknown" else "?") if det_size else "-"
-        text      = f"  {tag}  {size_code}  {detail:<22}  {time_str}"
+        left_text = f"{tag}  {size_code}  {detail}"
 
         fg = VERDICT_COLORS.get(verdict, "#1a1d23")
         bg = "#e8f5e9" if verdict == "OK" else "#ffebee"
-        return text, fg, bg
+        return left_text, time_str, fg, bg
 
     def _prepend_history_row(self, result: dict) -> None:
-        """Add one formatted row at the top of the history list."""
-        text, fg, bg = self._format_history_item(result)
+        """Add one history row — layout 2 คอลัมน์: ชื่อชิดซ้าย / เวลาชิดขวา
+        (string padding เดิมเหลื่อมเพราะอักษรไทย-อังกฤษกว้างไม่เท่ากันใน font)
+        """
+        left_text, time_str, fg, bg = self._format_history_item(result)
 
-        item = QListWidgetItem(text)
-        item.setFont(QFont(MONO_FONT, 12, QFont.Bold))
-        item.setForeground(QColor(fg))
-        item.setBackground(QColor(bg))
+        row = QFrame()
+        row.setStyleSheet(f"background: {bg}; border-radius: 4px;")
+        lay = QHBoxLayout(row)
+        lay.setContentsMargins(10, 6, 10, 6)
 
+        font = QFont(MONO_FONT, 12, QFont.Bold)
+        left = QLabel(left_text)
+        left.setFont(font)
+        left.setStyleSheet(f"background: transparent; color: {fg};")
+        lay.addWidget(left)
+        lay.addStretch()
+        right = QLabel(time_str)
+        right.setFont(font)
+        right.setStyleSheet(f"background: transparent; color: {fg};")
+        lay.addWidget(right)
+
+        item = QListWidgetItem()
+        # ความสูงคงที่ — sizeHint ตอนยังไม่ layout จะเตี้ยไป ทำให้อักษรไทยถูกตัด
+        item.setSizeHint(QSize(0, 40))
         self._history_list.insertItem(0, item)
+        self._history_list.setItemWidget(item, row)
 
         # Keep list from growing without bound
         while self._history_list.count() > 200:
@@ -1499,7 +1516,7 @@ class MainWindow(QMainWindow):
                 font-size: 12px;
             }
             #historyList::item {
-                padding: 7px 4px;
+                padding: 2px 4px;
                 border-bottom: 1px solid #eef0f3;
             }
 

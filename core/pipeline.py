@@ -16,8 +16,9 @@ Signal flow:
 Result dict shape:
   {
     "verdict":    "OK" | "NG",
-    "detections": [{"label": str,
-                    "bbox": {"x": int, "y": int, "w": int, "h": int}}],
+    "detections": [{"label": str,                       # ประเภท defect เช่น "รอยแตก"/"เศษขี้เหล็ก"
+                    "zone":  str,                       # optional: "land"/"inner"
+                    "bbox":  {"x", "y", "w", "h"}}],    # optional (เฉพาะ size_mismatch)
     "image_b64":  str,           # base64 JPEG of the inspected frame (RGB)
     # piece_id: ใช้ UUID ภายใน DB เท่านั้น — ไม่ include ใน result dict
     "timestamp":  str,           # UTC ISO-8601
@@ -123,7 +124,14 @@ class PipeInspector:
         det = Detection(frame_bgr, size=size, defthresh_pct=_pct)
         vis = det.vis   # BGR image ที่ Detection วาด bbox + verdict ลงแล้ว
         verdict = det.verdict
-        defects = "det.defects"
+
+        # แยกประเภท defect จาก flag ของทีม Detection → บันทึกลง DB ผ่าน detections
+        # (getattr กัน Detection เวอร์ชันเก่าที่ยังไม่มี flag — ได้ list ว่างเหมือนเดิม)
+        detections = []
+        if getattr(det, "defect1", False):
+            detections.append({"label": "รอยแตก", "zone": "land"})
+        if getattr(det, "defect2", False):
+            detections.append({"label": "เศษขี้เหล็ก", "zone": "inner"})
 
         # encode vis → base64 JPEG (BGR → RGB ก่อน)
         vis_rgb = cv2.cvtColor(vis, cv2.COLOR_BGR2RGB)
@@ -134,11 +142,14 @@ class PipeInspector:
             raise RuntimeError("cv2.imencode failed.")
         image_b64 = base64.b64encode(buffer).decode('utf-8')
 
-        logger.info("PipeInspector: %s", verdict)
+        logger.info(
+            "PipeInspector: %s | defects=%s",
+            verdict, [d["label"] for d in detections] or "-",
+        )
 
         return {
             "verdict":        verdict,
-            "detections":     [],    # bbox วาดลงรูปแล้ว — QPainter ไม่ต้องวาดซ้ำ
+            "detections":     detections,   # ประเภท defect (กรอบวาดลงรูป vis แล้ว)
             "image_b64":      image_b64,
             "pipe_radius_px": None,
             "detected_size":  "",

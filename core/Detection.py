@@ -359,15 +359,18 @@ class Detection:
         # อธิบาย threshold ที่ใช้จริง (สำหรับ debug)
         thr_desc = f"{self.defthresh_pct:.2f}%={self.thresh_px2:.0f}px²"
 
-        defect_areas = sorted(
-            [cv2.contourArea(c) for c in defects],
-            reverse=True,
-        )
-        if defect_areas:
+        # summary ใช้ verdict รวม (land + inner) — ไม่ใช่แค่โซน inner
+        if defects_all:
+            defect_areas = sorted(
+                [cv2.contourArea(c) for c in defects_all],
+                reverse=True,
+            )
             logger.info(
-                "Detection [%s]: %s | defects=%d | areas(px²)=%s | thresh=%s | GPU=%s",
+                "Detection [%s]: %s | defects=%d (land=%d, inner=%d) | areas(px²)=%s | thresh=%s | GPU=%s",
                 self.size,
                 verdict,
+                len(defects_all),
+                len(defects_land),
                 len(defects),
                 [f"{a:.0f}" for a in defect_areas],
                 thr_desc,

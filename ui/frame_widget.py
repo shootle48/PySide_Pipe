@@ -179,7 +179,11 @@ class FrameWidget(QWidget):
         painter.setFont(box_font)
 
         for det in detections:
-            bbox = det["bbox"]
+            # entry แบบไม่มี bbox (เช่น รอยแตก/เศษขี้เหล็ก — กรอบวาดลงรูป vis แล้ว)
+            # → ข้าม ไม่ต้องวาดซ้ำ (กัน KeyError ใน paintEvent)
+            bbox = det.get("bbox")
+            if not bbox:
+                continue
             bx   = int(bbox["x"] * scale_x) + x_off
             by   = int(bbox["y"] * scale_y) + y_off
             bw   = int(bbox["w"] * scale_x)
