@@ -69,8 +69,8 @@ _CH_INNER_LIGHT_PCT = "inner_light_pct"
 _THRESHOLD_CHANNELS = [
     (_CH_OUTER_PCT,       "พื้นที่ Defect — วงนอก",   False, 50),
     (_CH_INNER_PCT,       "พื้นที่ Defect — วงใน",    False, 50),
-    (_CH_OUTER_LIGHT_PCT, "ความสว่าง Defect — วงนอก", False, 40),
-    (_CH_INNER_LIGHT_PCT, "ความสว่าง Defect — วงใน",  False, 40),
+    (_CH_OUTER_LIGHT_PCT, "ความสว่าง Defect — วงนอก", False, 50),
+    (_CH_INNER_LIGHT_PCT, "ความสว่าง Defect — วงใน",  False, 50),
 ]
 
 # QSettings key — เก็บ "ค่าที่ส่งหลังบ้าน" (0–100) ตรงๆ ให้ pipeline อ่านส่ง Detection

@@ -288,8 +288,8 @@ class Detection:
 
         # Global threshold — ใช้ทั้ง outer และ inner
         # ยิ่ง light_pct สูง → thresh_val สูง → จับ defect สีสว่างขึ้นได้ด้วย
-        outer_thresh_val = int(255 * (0.3922 * (self.outer_light_pct/100)))
-        inner_thresh_val = int(255 * (0.3922 * (self.inner_light_pct/100)))
+        outer_thresh_val = int(255 * (0.5422 * (self.outer_light_pct/100)))
+        inner_thresh_val = int(255 * (0.6522 * (self.inner_light_pct/100)))
 
         self.brightness_thresh_outer = outer_thresh_val
         self.brightness_thresh_inner = inner_thresh_val
@@ -537,17 +537,17 @@ class Detection:
 
         for c in defects_land:
             lx, ly, lw, lh = cv2.boundingRect(c)
-            cv2.rectangle(vis, (lx, ly), (lx + lw, ly + lh), (0, 0, 255), 2)
+            cv2.rectangle(vis, (lx, ly), (lx + lw, ly + lh), (255, 0, 0), 2)
             cv2.putText(vis, "Crack", (lx, ly - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
         for c in defects_inner:
             ix, iy, iw, ih = cv2.boundingRect(c)
-            cv2.rectangle(vis, (ix, iy), (ix + iw, iy + ih), (0, 165, 255), 2)
+            cv2.rectangle(vis, (ix, iy), (ix + iw, iy + ih), (255, 0, 0), 2)
             cv2.putText(vis, "Iron Dust", (ix, iy - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
-        color = (0, 0, 255) if self.verdict == "NG" else (0, 200, 0)
+        color = (255, 0, 0) if self.verdict == "NG" else (0, 200, 0)
         cv2.putText(vis, self.verdict, (20, 50),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
 
