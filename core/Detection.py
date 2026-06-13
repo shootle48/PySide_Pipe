@@ -5,9 +5,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# วาดเส้น debug วงนอก/วงใน หรือไม่ — main_window override ตาม MA mode
-# (define ไว้ที่นี่ default False ให้ Detection ใช้ standalone/benchmark ได้โดยไม่ NameError)
-DEBUG_DRAW = False
+DEBUG_DRAW = True
 
 def _check_cuda() -> bool:
     try:
@@ -28,20 +26,17 @@ def _ms(t0: float) -> float:
 
 SIZE_MAPPING = {
     "L": {
-        "outer_circle": dict(dp=1, #ความละเอียดในการคำนวณ
-                             minDist=3000, #ระยะห่างขั้นต่ำระหว่างวงกลม (px)
-                             param1=50, #ความไวในการตรวจขอบ (edge detection threshold) ยิ่งน้อยยิ่งไว ตรวจเจอขอบได้ง่ายขึ้นแต่ก็ได้ขอบปลอมมากขึ้นด้วย
-                             param2=15, #คะแนนการ Vote ที่จะมองว่าเป็นวงกลมยิ่งตั้งสูงยิ่งต้องเป็นวงกลมมากๆ
-                             minRadius=180, maxRadius=185), #min/max ของรัศมีวงกลมที่ต้องการ
-        "mid_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
+        "outer_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
+                             minRadius=180, maxRadius=185),
+        "mid_circle":   dict(dp=1, minDist=3000, param1=50, param2=15,
                              minRadius=135, maxRadius=140),
         "inner_circle": dict(dp=1, minDist=200,  param1=50, param2=15,
-                             minRadius=95,  maxRadius=100), 
+                             minRadius=95,  maxRadius=100),
         "outer_shrink":    0.90,
         "inner_shrink":    0.90,
         "thresh_block":    301,
         "thresh_c":        1,
-        "blur_ksize":      21,
+        "blur_ksize":      7,
         "morph_kernel":    5,
         "morph_iter":      1,
         "max_defect_area": 30000,
@@ -49,7 +44,7 @@ SIZE_MAPPING = {
     "M": {
         "outer_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
                              minRadius=150, maxRadius=155),
-        "mid_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
+        "mid_circle":   dict(dp=1, minDist=3000, param1=50, param2=15,
                              minRadius=100, maxRadius=105),
         "inner_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
                              minRadius=65,  maxRadius=70),
@@ -65,8 +60,8 @@ SIZE_MAPPING = {
     "S": {
         "outer_circle": dict(dp=1, minDist=3000, param1=25, param2=30,
                              minRadius=80,  maxRadius=90),
-        "mid_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
-                             minRadius=55, maxRadius=60),
+        "mid_circle":   dict(dp=1, minDist=3000, param1=50, param2=15,
+                             minRadius=55,  maxRadius=60),
         "inner_circle": dict(dp=1, minDist=3000, param1=75, param2=15,
                              minRadius=35,  maxRadius=40),
         "outer_shrink":    0.90,
@@ -87,7 +82,7 @@ def _build_cuda_detectors() -> dict:
     for size, cfg in SIZE_MAPPING.items():
         cache[size] = {
             "outer": _make_cuda_detector(cfg["outer_circle"]),
-            "mid"  : _make_cuda_detector(cfg["mid_circle"]),
+            "mid":   _make_cuda_detector(cfg["mid_circle"]),
             "inner": _make_cuda_detector(cfg["inner_circle"]),
         }
         logger.debug("Detection: pre-built CUDA detectors for size %s", size)
@@ -105,68 +100,108 @@ def _make_cuda_detector(cfg_circle: dict):
 
 _CUDA_DETECTORS: dict = _build_cuda_detectors()
 
+
 class Detection:
     VALID_SIZES = ("L", "M", "S")
-    PCT_MIN = 0.0
-    PCT_MAX = 100.0   # threshold = % ของพื้นที่วงใน (inner circle)
+    PCT_MIN = 0
+    PCT_MAX = 100  # รับค่า 0.0–1.0 (= 0%–100%)
 
-    def __init__(self, image: np.ndarray, size: str, defthresh_pct: float = 0.0):
+    def __init__(
+        self,
+        image: np.ndarray,
+        size: str,
+        # ── outer (land / หน้าแปลน) ──────────────────────────────────────
+        outer_pct:       int = 100,   # พื้นที่ขั้นต่ำของ defect (0=เข้มงวดสุด, 1=หย่อนสุด)
+        outer_light_pct: int = 100,   # ความมืดขั้นต่ำ (0=ต้องมืดมาก, 1=ยอมรับทุกสี)
+        # ── inner (รูท่อ) ─────────────────────────────────────────────────
+        inner_pct:       int = 100,   # พื้นที่ขั้นต่ำของ defect
+        inner_light_pct: int = 100,   # ความมืดขั้นต่ำ
+    ):
+        # ── validate size ─────────────────────────────────────────────────
         size = size.upper().strip()
         if size not in self.VALID_SIZES:
             size = "M"
-            logger.warning("Wrong Definition of Size, the system changes it to M size as the default")
+            logger.warning("Detection: invalid size → fallback to M")
 
-        # threshold = % ของพื้นที่วงใน (pct/100 × พื้นที่วงในจริง คำนวณตอน processing)
-        # default 0.0 → 0% → 0 px² = เข้มงวดสุด (production ไม่ override ก็ใช้ค่านี้)
-        pct = 0.0 if defthresh_pct is None else float(defthresh_pct)
-        self.defthresh_pct = max(self.PCT_MIN, min(self.PCT_MAX, pct))
-        if pct < self.PCT_MIN or pct > self.PCT_MAX:
-            logger.warning(
-                "Detection [%s]: defthresh_pct=%s clamped to %s (valid range %s–%s%%)",
-                size, pct, self.defthresh_pct, self.PCT_MIN, self.PCT_MAX,
-            )
+        # ── clamp parameters 0.0–1.0 ─────────────────────────────────────
+        self.outer_pct       = max(self.PCT_MIN, min(self.PCT_MAX, int(outer_pct       or 0)))
+        self.outer_light_pct = max(self.PCT_MIN, min(self.PCT_MAX, int(outer_light_pct or 0)))
+        self.inner_pct       = max(self.PCT_MIN, min(self.PCT_MAX, int(inner_pct       or 0)))
+        self.inner_light_pct = max(self.PCT_MIN, min(self.PCT_MAX, int(inner_light_pct or 0)))
+
+        # warning ถ้าค่าที่ส่งมาเกิน range
+        for name, raw in [
+            ("outer_pct",       outer_pct),
+            ("outer_light_pct", outer_light_pct),
+            ("inner_pct",       inner_pct),
+            ("inner_light_pct", inner_light_pct),
+        ]:
+            v = int(raw or 0)
+            if v < self.PCT_MIN or v > self.PCT_MAX:
+                logger.warning(
+                    "Detection [%s]: %s=%.3f out of range → clamped to [%.1f, %.1f]",
+                    size, name, v, self.PCT_MIN, self.PCT_MAX,
+                )
+
         logger.info(
-            "Detection [%s]: [STEP] รับ threshold = %.2f%% ของพื้นที่วงใน",
-            size, self.defthresh_pct,
+            "Detection [%s]: params | "
+            "outer_pct=%.2f  outer_light_pct=%.2f | "
+            "inner_pct=%.2f  inner_light_pct=%.2f | "
+            "engine=%s",
+            size,
+            self.outer_pct, self.outer_light_pct,
+            self.inner_pct, self.inner_light_pct,
+            "CUDA" if _USE_CUDA else "CPU",
         )
-        self.thresh_px1 = None
-        self.thresh_px2 = None   # px² จริง — คำนวณตอน processing (ต้องรู้ r_inner)        
-        self.size  = size
-        self.cfg   = dict(SIZE_MAPPING[size])
-        self.error               = None
-        self.verdict             = None
+
+        # ── state ─────────────────────────────────────────────────────────
+        self.size    = size
+        self.cfg     = dict(SIZE_MAPPING[size])
+        self.error   = None
+        self.verdict = None
+        self.success = False
+
+        self.thresh_px_outer = None   # px² threshold จริงที่คำนวณได้ (outer)
+        self.thresh_px_inner = None   # px² threshold จริงที่คำนวณได้ (inner)
+        self.brightness_thresh_outer = None  # ค่าสีที่ใช้กรอง outer
+        self.brightness_thresh_inner = None  # ค่าสีที่ใช้กรอง inner
+
+        self.defect1 = False   # รอยแตก / defect บน land (outer)
+        self.defect2 = False   # เศษขี้เหล็ก / defect ใน bore (inner)
+
+        # debug images
+        self.masked_pipe       = None
+        self.masked_pipe_land  = None
+        self.inner_roi         = None
+        self.inner_pipe_masked = None
+        self.clean_land        = None
+        self.clean             = None
+        self.thresh            = None
+        self.r_inner           = None
+
+        # ── resize ────────────────────────────────────────────────────────
         h, w = image.shape[:2]
         if (w, h) != (1280, 720):
             image = cv2.resize(image, (1280, 720), interpolation=cv2.INTER_LINEAR)
-            logger.info(
-                "Detection [%s]: resized %dx%d → %dx%d",
-                size, w, h, 1280, 720,
-            )
+            logger.info("Detection [%s]: resized %dx%d → 1280x720", size, w, h)
+
         self.image = image
-        self.vis                 = image.copy()
-        self.clean               = None
-        self.masked_pipe         = None
-        self.inner_roi      = None
-        self.r_inner = None
-        self.masked_pipe_land = None
-        self.inner_pipe_masked = None
-        
-        self.defectCrack = None
-        self.defect1 = False
-        self.defect2 = False
-        
+        self.vis   = image.copy()
+
         self.processing()
 
+    # ── public output ──────────────────────────────────────────────────────
     @property
     def output(self):
         return {
             "result":  self.verdict,
-            "error":    self.error,
-            "vis":      self.vis,
-            "defect1" : self.defect1, # รอยแตก
-            "defect2" : self.defect2 # เศษขี้เหล็ก
+            "error":   self.error,
+            "vis":     self.vis,
+            "defect1": self.defect1,   # รอยแตก (outer/land)
+            "defect2": self.defect2,   # เศษขี้เหล็ก (inner/bore)
         }
 
+    # ── HoughCircles (CUDA → CPU fallback) ────────────────────────────────
     def _hough_circles(self, img_gray: np.ndarray, circle_key: str) -> "np.ndarray | None":
         cfg_circle = self.cfg[f"{circle_key}_circle"]
 
@@ -188,284 +223,410 @@ class Detection:
 
         return cv2.HoughCircles(img_gray, cv2.HOUGH_GRADIENT, **cfg_circle)
 
+    # ── helper: กรอง contour ด้วยพื้นที่ + ความมืด ──────────────────────
+    def _filter_defects(
+        self,
+        contours: list,
+        gray_src: np.ndarray,
+        area_thresh: int,
+        brightness_thresh: int,
+        zone_label: str,
+    ) -> tuple[list, list]:
+        """
+        คืน (defects, debug_info)
+        defect = contour ที่ผ่านทั้ง 2 เงื่อนไข:
+          1. area >= area_thresh
+          2. mean brightness ภายใน contour <= brightness_thresh
+             (ยิ่ง light_pct สูง → brightness_thresh สูง → ยอมรับสีสว่างขึ้น → เจอ defect เยอะขึ้น)
+        """
+        defects = []
+        debug   = []
 
+        for c in contours:
+            area = cv2.contourArea(c)
+
+            # สร้าง mask เฉพาะ contour นี้เพื่อวัดความสว่างเฉลี่ย
+            mask_c = np.zeros(gray_src.shape, dtype=np.uint8)
+            cv2.drawContours(mask_c, [c], -1, 255, -1)
+            mean_brightness = float(cv2.mean(gray_src, mask=mask_c)[0])
+
+            pass_area   = area >= area_thresh
+            pass_bright = mean_brightness <= brightness_thresh
+
+            debug.append({
+                "area":       area,
+                "brightness": mean_brightness,
+                "pass_area":  pass_area,
+                "pass_bright": pass_bright,
+            })
+
+            if pass_area and pass_bright:
+                defects.append(c)
+
+        # log รายละเอียดทุก contour ใน zone นี้
+        logger.debug(
+            "Detection [%s]: [%s] contour details: %s",
+            self.size, zone_label,
+            [
+                f"area={d['area']:.0f}({'✓' if d['pass_area'] else '✗'}) "
+                f"bright={d['brightness']:.1f}({'✓' if d['pass_bright'] else '✗'})"
+                for d in debug
+            ],
+        )
+
+        return defects, debug
+
+    # ── main processing ────────────────────────────────────────────────────
     def processing(self):
         cfg   = self.cfg
         t_all = time.perf_counter()
-        logs = {
-            "size": self.size
-        }
 
-        # ── 1. Preprocess ─────────────────────────────────────────────────
+        # ── 1. Preprocess ──────────────────────────────────────────────────
         t = time.perf_counter()
         gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         blur = cv2.medianBlur(gray, cfg["blur_ksize"])
-        adaptive_threshold = cv2.adaptiveThreshold(
-            blur, 255,
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV,
-            cfg["thresh_block"],
-            cfg["thresh_c"],
-        )
-        adaptive_threshold_2 = cv2.adaptiveThreshold(
+
+        # Global threshold — ใช้ทั้ง outer และ inner
+        # ยิ่ง light_pct สูง → thresh_val สูง → จับ defect สีสว่างขึ้นได้ด้วย
+        outer_thresh_val = int(255 * (0.3922 * (self.outer_light_pct/100)))
+        inner_thresh_val = int(255 * (0.3922 * (self.inner_light_pct/100)))
+
+        self.brightness_thresh_outer = outer_thresh_val
+        self.brightness_thresh_inner = inner_thresh_val
+
+        # threshold ภาพ (ใช้เป็น source สำหรับ morphology)
+        _, thresh_outer_img = cv2.threshold(blur, outer_thresh_val, 255, cv2.THRESH_BINARY_INV)
+        thresh_inner_img = cv2.adaptiveThreshold(
             gray, 255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY_INV,
             cfg["thresh_block"],
             cfg["thresh_c"],
         )
-        t_pre = _ms(t)
 
-        # ── 2. Outer HoughCircles ─────────────────────────────────────────
+        t_pre = _ms(t)
+        logger.info(
+            "Detection [%s]: preprocess done | "
+            "outer_thresh_val=%d  inner_thresh_val=%d | pre=%.1f ms",
+            self.size, outer_thresh_val, inner_thresh_val, t_pre,
+        )
+
+        # ── 2. Outer HoughCircles ──────────────────────────────────────────
         t = time.perf_counter()
         outer_circle = self._hough_circles(gray, "outer")
         t_outer = _ms(t)
 
         if outer_circle is None:
-            logger.warning("Detection [Size %s]: Pipe not found", self.size)
+            logger.warning("Detection [%s]: outer circle not found", self.size)
             self.error   = f"[Size {self.size}] Pipe not found"
             self.verdict = "NG"
-            cv2.putText(self.vis, self.error,
-                        (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2)
-            logger.info(
-                "Detection [%s] timing | pre=%.1f  outer=%.1f  TOTAL=%.1f ms",
-                self.size, t_pre, t_outer, _ms(t_all),
-            )
+            cv2.putText(self.vis, self.error, (20, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+            logger.info("Detection [%s] timing | pre=%.1f  outer=%.1f  TOTAL=%.1f ms",
+                        self.size, t_pre, t_outer, _ms(t_all))
             return
 
-        ax, ay, r_outer  = np.round(outer_circle[0]).astype(int)[0]
-        logger.debug("Detection [Size %s]: outer center=(%d,%d) r=%d",
-                     self.size, ax, ay, r_outer)
-
+        ax, ay, r_outer = np.round(outer_circle[0]).astype(int)[0]
         r_outer_shrink  = int(r_outer * cfg["outer_shrink"])
-        logs["r_outer"] = int(r_outer)
-        pipe_mask  = np.zeros_like(gray)
+        logger.info("Detection [%s]: outer circle | center=(%d,%d) r=%d  shrink_r=%d | %.1f ms",
+                    self.size, ax, ay, r_outer, r_outer_shrink, t_outer)
+
+        # mask วงนอก
+        pipe_mask = np.zeros_like(gray)
         cv2.circle(pipe_mask, (ax, ay), r_outer_shrink, 255, -1)
         masked_pipe      = cv2.bitwise_and(gray, pipe_mask)
         self.masked_pipe = masked_pipe
 
+        # ── 2b. Mid HoughCircles ───────────────────────────────────────────
+        t = time.perf_counter()
         mid_circle = self._hough_circles(masked_pipe, "mid")
+        t_mid = _ms(t)
+
         if mid_circle is None:
-            logger.warning("Detection [%s]: Mid Pipe not found", self.size)
-            self.error = f"Detection [{self.size}]: Pipe not found"
+            logger.warning("Detection [%s]: mid circle not found", self.size)
+            self.error   = f"[Size {self.size}] Mid pipe not found"
             self.verdict = "NG"
-            cv2.putText(self.vis, self.error,
-                        (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2)
+            cv2.putText(self.vis, self.error, (20, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+            logger.info("Detection [%s] timing | pre=%.1f  outer=%.1f  mid=%.1f  TOTAL=%.1f ms",
+                        self.size, t_pre, t_outer, t_mid, _ms(t_all))
             return
-        
-        bx, by, r_mid = np.round(mid_circle[0]).astype(int)[0]
-        logs["r_mid"] = int(r_mid)
-        mid_circle_mask  = np.zeros_like(gray)
-        cv2.circle(mid_circle_mask, (bx, by), r_mid, 255, -1)
-        inner_roi = cv2.bitwise_and(gray, mid_circle_mask)
+
+        mx, my, r_mid = np.round(mid_circle[0]).astype(int)[0]
+        logger.info("Detection [%s]: mid circle | center=(%d,%d) r=%d | %.1f ms",
+                    self.size, mx, my, r_mid, t_mid)
+
+        mid_circle_mask = np.zeros_like(gray)
+        cv2.circle(mid_circle_mask, (mx, my), r_mid, 255, -1)
+        inner_roi      = cv2.bitwise_and(gray, mid_circle_mask)
         self.inner_roi = inner_roi
 
-        # ── 3. Inner HoughCircles ─────────────────────────────────────────
+        # ── 3. Inner HoughCircles ──────────────────────────────────────────
         t = time.perf_counter()
         inner_circle = self._hough_circles(inner_roi, "inner")
         t_inner = _ms(t)
 
         if inner_circle is None:
-            logger.warning("Detection [Size %s]: Inner Pipe Not Detected", self.size)
-            self.error   = f"[Size {self.size}] Inner Pipe Not Detected"
+            logger.warning("Detection [%s]: inner circle not found", self.size)
+            self.error   = f"[Size {self.size}] Inner pipe not found"
             self.verdict = "NG"
-            if DEBUG_DRAW:   # วงนอกเจอ — โชว์ไว้ debug ว่า inner fail ตรงไหน
+            if DEBUG_DRAW:
                 cv2.circle(self.vis, (ax, ay), r_outer, (0, 255, 0), 2)
-            cv2.putText(self.vis, self.error,
-                        (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2)
+            cv2.putText(self.vis, self.error, (20, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
             logger.info(
-                "Detection [%s] timing | pre=%.1f  outer=%.1f  inner=%.1f  TOTAL=%.1f ms",
-                self.size, t_pre, t_outer, t_inner, _ms(t_all),
-            )
+                "Detection [%s] timing | pre=%.1f  outer=%.1f  mid=%.1f  inner=%.1f  TOTAL=%.1f ms",
+                self.size, t_pre, t_outer, t_mid, t_inner, _ms(t_all))
             return
 
         cx, cy, r_inner = np.round(inner_circle[0]).astype(int)[0]
-        self.r_inner  = r_inner
-        r_inner_final = max(int(r_inner * cfg["inner_shrink"]), 10)
-        logger.debug("Detection [Size %s]: inner center=(%d,%d) r=%d",
-                     self.size, cx, cy, r_inner_final)
+        self.r_inner    = r_inner
+        r_inner_final   = max(int(r_inner * cfg["inner_shrink"]), 10)
+        logger.info("Detection [%s]: inner circle | center=(%d,%d) r=%d  shrink_r=%d | %.1f ms",
+                    self.size, cx, cy, r_inner, r_inner_final, t_inner)
 
-        # ── 4. Threshold + Mask ───────────────────────────────────────────
+        # ══════════════════════════════════════════════════════════════════
+        # ── 4. OUTER DEFECT (land / หน้าแปลน) ────────────────────────────
+        # โซน = วงแหวนระหว่าง r_outer_shrink กับ r_mid
+        # ใช้ Global Threshold + เช็คพื้นที่ + เช็คความมืด
+        # ══════════════════════════════════════════════════════════════════
+        t = time.perf_counter()
+
         pipe_land_mask = np.zeros_like(gray)
         cv2.circle(pipe_land_mask, (ax, ay), r_outer_shrink, 255, -1)
-        cv2.circle(pipe_land_mask, (bx, by), r_mid, 0, -1)
-        masked_pipe_land = cv2.bitwise_and(gray, pipe_land_mask)
+        cv2.circle(pipe_land_mask, (mx, my), r_mid, 0, -1)           # เจาะรูตรงกลางออก
+        masked_pipe_land      = cv2.bitwise_and(gray, pipe_land_mask)
         self.masked_pipe_land = masked_pipe_land
 
-        th_land = cv2.bitwise_and(adaptive_threshold, adaptive_threshold, mask=pipe_land_mask)
+        # apply global threshold เฉพาะโซน land
+        th_land = cv2.bitwise_and(thresh_outer_img, thresh_outer_img, mask=pipe_land_mask)
+
         k, iters = cfg["morph_kernel"], cfg["morph_iter"]
-        kernel = np.ones((k, k), np.uint8)
+        kernel   = np.ones((k, k), np.uint8)
         clean_land = cv2.morphologyEx(th_land, cv2.MORPH_OPEN,  kernel, iterations=iters)
         clean_land = cv2.morphologyEx(clean_land, cv2.MORPH_CLOSE, kernel, iterations=iters)
         self.clean_land = clean_land
+
         contours_land, _ = cv2.findContours(clean_land, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        all_areas_land = [(c, cv2.contourArea(c)) for c in contours_land]
-        
-        inner_area_px1 = float((np.pi * (r_outer_shrink ** 2)) - (np.pi * (r_mid ** 2)))
-        self.thresh_px1 = ((self.defthresh_pct / 100.0)*(1/39.8)) * inner_area_px1
-        logger.info(
-            "Detection [%s]: [STEP] threshold %.2f%% × พื้นที่ตรวจ %.0f px² ขนาด Defect = %.0f px²",
-            self.size, self.defthresh_pct, inner_area_px1, self.thresh_px1,
-        )
-        defects_land   = [c for c, area in all_areas_land if area >= self.thresh_px1]
-        self.defect1 = len(defects_land)> 0
 
-        # log พื้นที่ contour โซน land (detect1) — เอาเฉพาะตัวเลข px² เรียงใหญ่→เล็ก
-        # (ห้าม print all_areas_land ตรงๆ — ข้างในมี contour ndarray ยาวมากอ่านไม่ได้)
-        areas_land = sorted((area for _, area in all_areas_land), reverse=True)
+        # คำนวณ area threshold จริง (px²)
+        # outer_pct=0 → thresh=0 (เข้มงวดสุด ทุก contour เป็น defect)
+        # outer_pct=1 → thresh=area_land (ต้องใหญ่มากๆ ถึงเป็น defect)
+        land_area_total   = float(np.pi * r_outer_shrink**2 - np.pi * r_mid**2)
+        self.thresh_px_outer = ((1-(self.outer_pct/100))*(1/39.8)) * land_area_total
+
         logger.info(
-            "Detection [%s]: [detect1/land] contours=%d | เกิน thresh=%d | areas(px²)=%s",
-            self.size, len(areas_land), len(defects_land),
-            [f"{a:.0f}" for a in areas_land],
+            "Detection [%s]: [outer/land] "
+            "zone_area=%.0f px²  outer_pct=%.2f  thresh_area=%.0f px²  "
+            "brightness_thresh=%d  contours_found=%d",
+            self.size,
+            land_area_total, self.outer_pct, self.thresh_px_outer,
+            self.brightness_thresh_outer, len(contours_land),
         )
 
-        
+        defects_land, dbg_land = self._filter_defects(
+            contours_land, gray,
+            area_thresh=self.thresh_px_outer,
+            brightness_thresh=self.brightness_thresh_outer,
+            zone_label="outer/land",
+        )
+        self.defect1 = len(defects_land) > 0
+
+        areas_land_all = sorted([cv2.contourArea(c) for c in contours_land], reverse=True)
+        logger.info(
+            "Detection [%s]: [outer/land] result | "
+            "total_contours=%d  passed=%d  defect1=%s | "
+            "all_areas(px²)=%s",
+            self.size,
+            len(contours_land), len(defects_land), self.defect1,
+            [f"{a:.0f}" for a in areas_land_all],
+        )
+
+        t_outer_defect = _ms(t)
+
+        # ══════════════════════════════════════════════════════════════════
+        # ── 5. INNER DEFECT (bore / รูท่อ) ───────────────────────────────
+        # โซน = ภายใน r_inner_final
+        # ใช้ Global Threshold + เช็คพื้นที่ + เช็คความมืด
+        # ══════════════════════════════════════════════════════════════════
         t = time.perf_counter()
+
         inner_pipe_mask = np.zeros(gray.shape, dtype=np.uint8)
         cv2.circle(inner_pipe_mask, (cx, cy), r_inner_final, 255, -1)
-        inner_pipe_masked = cv2.bitwise_and(gray, inner_pipe_mask)
+        inner_pipe_masked      = cv2.bitwise_and(gray, inner_pipe_mask)
         self.inner_pipe_masked = inner_pipe_masked
 
-        th         = cv2.bitwise_and(adaptive_threshold_2, adaptive_threshold_2, mask=inner_pipe_mask)
-        self.thresh = th
-        t_thresh = _ms(t)
+        # apply global threshold เฉพาะโซน inner
+        th_inner = cv2.bitwise_and(thresh_inner_img, thresh_inner_img, mask=inner_pipe_mask)
+        self.thresh = th_inner
 
-        # ── 5. Morphology ─────────────────────────────────────────────────
-        t = time.perf_counter()
-        k , iters    = cfg["morph_kernel"], cfg["morph_iter"]
-        kernel = np.ones((k, k), np.uint8)
-        clean  = cv2.morphologyEx(th,    cv2.MORPH_OPEN,  kernel, iterations=iters)
-        clean  = cv2.morphologyEx(clean, cv2.MORPH_CLOSE, kernel, iterations=iters)
-        self.clean = clean
-        t_morph = _ms(t)
+        clean_inner = cv2.morphologyEx(th_inner, cv2.MORPH_OPEN,  kernel, iterations=iters)
+        clean_inner = cv2.morphologyEx(clean_inner, cv2.MORPH_CLOSE, kernel, iterations=iters)
+        self.clean  = clean_inner
 
-        # ── 6. Contour + Verdict ──────────────────────────────────────────
-        t = time.perf_counter()
+        contours_inner, _ = cv2.findContours(clean_inner, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # แปลง threshold → px² : % ของพื้นที่วงใน
-        inner_area_px2 = float(np.pi * (r_inner ** 2))
-        self.thresh_px2 = ((self.defthresh_pct / 100.0)*(1/4.55)) * inner_area_px2
+        # คำนวณ area threshold จริง (px²)
+        inner_area_total     = float(np.pi * r_inner**2)
+        self.thresh_px_inner = ((1-(self.inner_pct/100))*(1/4.55)) * inner_area_total
+
         logger.info(
-            "Detection [%s]: [STEP] threshold %.2f%% × พื้นที่วงใน %.0f px² (r_inner=%d) = %.0f px²",
-            self.size, self.defthresh_pct, inner_area_px2, r_inner, self.thresh_px2,
+            "Detection [%s]: [inner/bore] "
+            "zone_area=%.0f px²  inner_pct=%.2f  thresh_area=%.0f px²  "
+            "brightness_thresh=%d  contours_found=%d",
+            self.size,
+            inner_area_total, self.inner_pct, self.thresh_px_inner,
+            self.brightness_thresh_inner, len(contours_inner),
         )
 
-        contours, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        all_areas = [(c, cv2.contourArea(c)) for c in contours]
-        defects  = [c for c, area in all_areas if area >= self.thresh_px2]
-        self.defect2 = len(defects)> 0
+        defects_inner, dbg_inner = self._filter_defects(
+            contours_inner, gray,
+            area_thresh=self.thresh_px_inner,
+            brightness_thresh=self.brightness_thresh_inner,
+            zone_label="inner/bore",
+        )
+        self.defect2 = len(defects_inner) > 0
 
-        defects_all = defects_land + defects  # รวม defect ทั้ง land และ inner
-        verdict = "NG" if defects_all else "OK"
+        areas_inner_all = sorted([cv2.contourArea(c) for c in contours_inner], reverse=True)
+        logger.info(
+            "Detection [%s]: [inner/bore] result | "
+            "total_contours=%d  passed=%d  defect2=%s | "
+            "all_areas(px²)=%s",
+            self.size,
+            len(contours_inner), len(defects_inner), self.defect2,
+            [f"{a:.0f}" for a in areas_inner_all],
+        )
 
-        self.defects = defects_all
-        self.verdict = verdict
+        t_inner_defect = _ms(t)
 
-        t_contour = _ms(t)
+        # ── 6. Verdict ────────────────────────────────────────────────────
+        defects_all  = defects_land + defects_inner
+        self.verdict = "NG" if defects_all else "OK"
 
-        # อธิบาย threshold ที่ใช้จริง (สำหรับ debug)
-        thr_desc = f"{self.defthresh_pct:.2f}%={self.thresh_px2:.0f}px²"
-
-        # summary ใช้ verdict รวม (land + inner) — ไม่ใช่แค่โซน inner
         if defects_all:
-            defect_areas = sorted(
-                [cv2.contourArea(c) for c in defects_all],
-                reverse=True,
-            )
             logger.info(
-                "Detection [%s]: %s | defects=%d (land=%d, inner=%d) | areas(px²)=%s | thresh=%s | GPU=%s",
-                self.size,
-                verdict,
-                len(defects_all),
-                len(defects_land),
-                len(defects),
-                [f"{a:.0f}" for a in defect_areas],
-                thr_desc,
+                "Detection [%s]: VERDICT=%s | "
+                "defects=%d (land=%d, inner=%d) | "
+                "outer_pct=%.2f outer_light=%.2f inner_pct=%.2f inner_light=%.2f | "
+                "GPU=%s",
+                self.size, self.verdict,
+                len(defects_all), len(defects_land), len(defects_inner),
+                self.outer_pct, self.outer_light_pct,
+                self.inner_pct, self.inner_light_pct,
                 _USE_CUDA,
             )
         else:
-            rejected_areas = sorted([area for _, area in all_areas], reverse=True)
             logger.info(
-                "Detection [%s]: OK | defects=0 | thresh=%s | rejected_areas(px²)=%s | GPU=%s",
+                "Detection [%s]: VERDICT=OK | no defects | "
+                "outer_pct=%.2f outer_light=%.2f inner_pct=%.2f inner_light=%.2f | "
+                "GPU=%s",
                 self.size,
-                thr_desc,
-                [f"{a:.0f}" for a in rejected_areas[:5]],
+                self.outer_pct, self.outer_light_pct,
+                self.inner_pct, self.inner_light_pct,
                 _USE_CUDA,
             )
 
         # ── 7. Draw ───────────────────────────────────────────────────────
         t = time.perf_counter()
         vis = self.image.copy()
-        if DEBUG_DRAW:   # วงกลม debug เฉพาะ MA mode (ลูกค้าไม่เห็นใน production)
-            cv2.circle(vis, (ax,  ay),  r_outer, (255, 0, 255), 2)
-            cv2.circle(vis, (bx,  by),  r_mid, (0, 255, 255), 2)
-            cv2.circle(vis, (cx, cy), r_inner, (255, 144, 30), 2)
+
+        if DEBUG_DRAW:
+            cv2.circle(vis, (ax, ay), r_outer,       (255,   0, 255), 2)
+            cv2.circle(vis, (mx, my), r_mid,          (  0, 255, 255), 2)
+            cv2.circle(vis, (cx, cy), r_inner,        (255, 144,  30), 2)
 
         for c in defects_land:
-            bx, by, bw, bh = cv2.boundingRect(c)
-            cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (255, 0, 0), 2)
-            cv2.putText(vis, f"Crack", (bx, by - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+            lx, ly, lw, lh = cv2.boundingRect(c)
+            cv2.rectangle(vis, (lx, ly), (lx + lw, ly + lh), (0, 0, 255), 2)
+            cv2.putText(vis, "Crack", (lx, ly - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
-        for c in defects:
-            bx, by, bw, bh = cv2.boundingRect(c)
-            cv2.rectangle(vis, (bx, by), (bx + bw, by + bh), (255, 0, 0), 2)
-            cv2.putText(vis, "Iron Dust", (bx, by - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
-        color = (255, 0, 0) if verdict == "NG" else (0, 200, 0)
-        cv2.putText(vis, verdict, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
+        for c in defects_inner:
+            ix, iy, iw, ih = cv2.boundingRect(c)
+            cv2.rectangle(vis, (ix, iy), (ix + iw, iy + ih), (0, 165, 255), 2)
+            cv2.putText(vis, "Iron Dust", (ix, iy - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)
+
+        color = (0, 0, 255) if self.verdict == "NG" else (0, 200, 0)
+        cv2.putText(vis, self.verdict, (20, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3)
+
         self.vis     = vis
         self.success = True
         t_draw = _ms(t)
 
-        # ── Summary log (timing breakdown) ─────────────────────────────────
+        # ── timing summary ────────────────────────────────────────────────
         t_total = _ms(t_all)
         logger.info(
             "Detection [%s] timing | "
-            "pre=%.1f  outer=%.1f  inner=%.1f  thresh=%.1f  morph=%.1f  contour=%.1f  draw=%.1f  "
-            "TOTAL=%.1f ms",
+            "pre=%.1f  outer=%.1f  mid=%.1f  inner=%.1f  "
+            "outer_defect=%.1f  inner_defect=%.1f  draw=%.1f  TOTAL=%.1f ms",
             self.size,
-            t_pre, t_outer, t_inner, t_thresh, t_morph, t_contour, t_draw,
+            t_pre, t_outer, t_mid, t_inner,
+            t_outer_defect, t_inner_defect, t_draw,
             t_total,
         )
 
 
-# # Quick test
+# # ── Quick test ─────────────────────────────────────────────────────────────
 # if __name__ == "__main__":
-#     import sys
+#     logging.basicConfig(level=logging.INFO)
 
 #     # img_path = r"C:\Work\Praram Nine\Smartsense\Pipe_Detection_Dataset\Video_1_Size_L\frame_000000.jpg"
+#     # img_path = r"C:\Users\Mate\Downloads\290282f1-b2d1-4b78-b0bb-0360ef428428.jpg"
 #     img_path = r"C:\Work\Praram Nine\Smartsense\Pipe_Detection_Dataset\Video_3_Size_M\frame_023027.jpg"
 #     # img_path = r"C:\Users\Mate\Downloads\drive-download-20260524T075736Z-3-001\IMG_7037.PNG"
-#     size     = "M"
-#     defthresh_pct = 10.0   # % ของพื้นที่วงใน (None = ใช้ default px²)
+#     # img_path = r"C:\Users\Mate\Downloads\drive-download-20260524T075736Z-3-001\IMG_7036.PNG"
+#     # img_path = r"C:\Work\Praram Nine\Smartsense\Pipe_Detection_Dataset\Video_2_Size_L\frame_012887.jpg"
+#     size            = "M"
+#     outer_pct       = 100
+#     outer_light_pct = 50
+#     inner_pct       = 100
+#     inner_light_pct = 100
+
+#     print(f"CUDA available: {_USE_CUDA}")
 
 #     image = cv2.imread(img_path)
 #     if image is None:
 #         raise FileNotFoundError(f"Cannot read image: {img_path}")
 
-#     det = Detection(image, size=size, defthresh_pct=defthresh_pct)
+#     h, w = image.shape[:2]
+#     print(f"Image size  : {w} x {h} px")
+
+#     det = Detection(
+#         image,
+#         size            = size,
+#         outer_pct       = outer_pct,
+#         outer_light_pct = outer_light_pct,
+#         inner_pct       = inner_pct,
+#         inner_light_pct = inner_light_pct,
+#     )
 #     out = det.output
 
-#     print(f"Result : {out['result']}")
-#     print(f"Success: {out['success']}")
-#     print(f"Inner radius: {det.roi_inner_raw}")
-#     print(f"Threshold   : {det.thresh_px2} px² (จาก {det.defthresh_pct}%)")
-#     print(f"Defect areas: {out['defect_areas']} px²")
+#     print(f"Result      : {out['result']}")
+#     print(f"Defect1 (Crack)     : {out['defect1']}")
+#     print(f"Defect2 (Iron Dust) : {out['defect2']}")
+#     print(f"thresh_px_outer     : {det.thresh_px_outer}")
+#     print(f"thresh_px_inner     : {det.thresh_px_inner}")
+#     print(f"brightness_outer    : {det.brightness_thresh_outer}")
+#     print(f"brightness_inner    : {det.brightness_thresh_inner}")
 #     if out["error"]:
-#         print(f"Error  : {out['error']}")
+#         print(f"Error       : {out['error']}")
 
 #     cv2.imshow("Result", out["vis"])
-#     # if det.thresh is not None:
-#     #     cv2.imshow("Threshold", det.thresh)
-#     # if det.clean is not None:
-#     #     cv2.imshow("Clean", det.clean)
-#     # if det.roi_inner is not None:
-#     #     cv2.imshow("ROI Inner", det.roi_inner)
+
+#     if det.masked_pipe is not None:
+#         cv2.imshow("Outer Masked", det.masked_pipe)
+#     if det.masked_pipe_land is not None:
+#         cv2.imshow("Land Masked", det.masked_pipe_land)
+#     if det.inner_roi is not None:
+#         cv2.imshow("Inner ROI", det.inner_roi)
+#     if det.inner_pipe_masked is not None:
+#         cv2.imshow("Inner Masked", det.inner_pipe_masked)
+#     if det.clean_land is not None:
+#         cv2.imshow("Threshold Land", det.clean_land)
+#     if det.clean is not None:
+#         cv2.imshow("Threshold Inner", det.clean)
 
 #     cv2.waitKey(0)
 #     cv2.destroyAllWindows()
-
-       
-        
-
