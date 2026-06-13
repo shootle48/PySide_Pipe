@@ -55,8 +55,11 @@ _SLIDER_STEP = 5
 
 # ── 4 หลอดปรับ (per size) ที่ส่งให้ Detection ──────────────────────────────
 #   (suffix, label, flip, default_slider)
-#   flip=True  → พื้นที่ defect (UI = "ความเข้มงวด") เก็บ/ส่ง = 100 − slider  (ค่าเดิม)
-#   flip=False → ความสว่าง defect ที่ยอมรับ ส่ง = slider ตรงๆ (= ตัวคูณ ×150 ฝั่ง Detection)
+#   ทุกหลอด: slider = "ระดับความเข้มงวด" 0–100% ส่ง % ตรงๆ (ไม่ flip)
+#   เพราะ Detection ตัวใหม่ตีความ "ค่ายิ่งมาก = ยิ่งเข้มงวด" ทั้งพื้นที่และแสง
+#     - พื้นที่:  thresh = (1 − pct/100) × area  → pct สูง = thresh ต่ำ = จับ defect เยอะ
+#     - แสง:     bright_thresh = 255 × 0.3922 × pct/100 → pct สูง = ยอมรับสีสว่างขึ้น = จับเยอะ
+#   (flip ถูกถอดออก — ตัวเก่าตีความ ค่าน้อย=เข้มงวด จึงเคยต้อง flip, ตัวใหม่กลับด้าน)
 _CH_OUTER_PCT       = "outer_pct"
 _CH_INNER_PCT       = "inner_pct"
 _CH_OUTER_LIGHT_PCT = "outer_light_pct"
@@ -64,8 +67,8 @@ _CH_INNER_LIGHT_PCT = "inner_light_pct"
 
 #                  suffix              label                       flip   default(slider)
 _THRESHOLD_CHANNELS = [
-    (_CH_OUTER_PCT,       "พื้นที่ Defect — วงนอก",   True,  50),
-    (_CH_INNER_PCT,       "พื้นที่ Defect — วงใน",    True,  50),
+    (_CH_OUTER_PCT,       "พื้นที่ Defect — วงนอก",   False, 50),
+    (_CH_INNER_PCT,       "พื้นที่ Defect — วงใน",    False, 50),
     (_CH_OUTER_LIGHT_PCT, "ความสว่าง Defect — วงนอก", False, 40),
     (_CH_INNER_LIGHT_PCT, "ความสว่าง Defect — วงใน",  False, 40),
 ]
@@ -327,12 +330,9 @@ class BatchSetupDialog(QDialog):
             self._update_value_label(ch, val)
 
     def _update_value_label(self, ch: str, slider_pos: int) -> None:
-        """อัปเดต label ของหลอดนั้น — พื้นที่=ความเข้มงวด(+ค่าส่ง), แสง=ความสว่าง"""
-        flip, _default = _channel_meta(ch)
-        if flip:
-            self._value_labels[ch].setText(f"ความเข้มงวด {slider_pos}%  (ส่ง {100 - slider_pos}%)")
-        else:
-            self._value_labels[ch].setText(f"ความสว่าง {slider_pos}%")
+        """อัปเดต label — แสง=ความสว่าง, พื้นที่=ความเข้มงวด (ส่ง % ตรงๆ ทั้งคู่)"""
+        kind = "ความสว่าง" if "light" in ch else "ความเข้มงวด"
+        self._value_labels[ch].setText(f"{kind} {slider_pos}%")
 
     # ── Slots ─────────────────────────────────────────────────────────────
 

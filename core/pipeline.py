@@ -121,11 +121,12 @@ class PipeInspector:
 
     def inspect(self, frame_bgr: np.ndarray, size: str = "L") -> dict:
         # 4 ค่าที่ MA ตั้งผ่าน slider (เก็บที่ QSettings, per size) → ส่งให้ Detection
-        #   พื้นที่ defect (outer/inner) default 0 = เข้มงวดสุด (production ไม่ override)
-        #   ความสว่าง defect (outer/inner) default 40 ≈ ตัวคูณ 0.40 (baseline ที่ทีมเทสไว้)
+        # Detection ตัวใหม่: ค่ายิ่งมาก = ยิ่งเข้มงวด (ทั้งพื้นที่และแสง)
+        #   default (production ไม่ override) = ตรงกับ default slider ของ dialog:
+        #     พื้นที่ 50 (กลาง), แสง 40 (≈ baseline ทีม)
         s = QSettings()
-        outer_pct       = self._read_pct(s, "outer_pct",       size, 0.0)
-        inner_pct       = self._read_pct(s, "inner_pct",       size, 0.0)
+        outer_pct       = self._read_pct(s, "outer_pct",       size, 50.0)
+        inner_pct       = self._read_pct(s, "inner_pct",       size, 50.0)
         outer_light_pct = self._read_pct(s, "outer_light_pct", size, 40.0)
         inner_light_pct = self._read_pct(s, "inner_light_pct", size, 40.0)
 
