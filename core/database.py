@@ -70,6 +70,7 @@ class DatabaseManager:
             str(db_path),
             check_same_thread=False,
             detect_types=sqlite3.PARSE_DECLTYPES,
+            timeout=10.0,   # รอ WAL lock สูงสุด 10 วิ แล้ว error แทน hang ตลอด (เผื่อ crash ค้าง)
         )
         self._conn.row_factory = sqlite3.Row
         self._last_cleanup_at: float = 0.0   # throttle: last time cleanup_old_data ran

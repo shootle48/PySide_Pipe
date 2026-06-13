@@ -105,23 +105,43 @@ class PipeInspector:
         # size_classifier=None,   # ยังรองรับ interface เดิม แต่ไม่ใช้แล้ว
     ) -> None:
         self.jpeg_quality = jpeg_quality
+        # ตรวจ signature ของ Detection 1 ครั้ง — รองรับทั้งตัวเก่า (defthresh_pct เดียว)
+        # และตัวใหม่ 6 พารามิเตอร์ (image, size, outer_pct, outer_light_pct, inner_pct, inner_light_pct)
+        import inspect as _inspect
+        self._detection_new_sig = len(_inspect.signature(Detection.__init__).parameters) >= 7
+
+    @staticmethod
+    def _read_pct(settings: QSettings, ch: str, size: str, default: float) -> float:
+        """อ่านค่า % ของ channel/size จาก QSettings (default ถ้าไม่มี/พัง)"""
+        raw = settings.value(f"detection/{ch}/{size}", default)
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return float(default)
 
     def inspect(self, frame_bgr: np.ndarray, size: str = "L") -> dict:
-        # threshold = % ของพื้นที่วงใน (MA ตั้งผ่าน slider → เก็บที่ QSettings)
-        #   - มี key → ส่งค่านั้น
-        #   - ไม่มี key (production ไม่ override) → default 0 (เหมือนส่ง %0 = เข้มงวดสุด)
-        _pct = QSettings().value(f"detection/threshold_pct/{size}", 0.0)
-        try:
-            _pct = float(_pct)
-        except (TypeError, ValueError):
-            _pct = 0.0
+        # 4 ค่าที่ MA ตั้งผ่าน slider (เก็บที่ QSettings, per size) → ส่งให้ Detection
+        #   พื้นที่ defect (outer/inner) default 0 = เข้มงวดสุด (production ไม่ override)
+        #   ความสว่าง defect (outer/inner) default 40 ≈ ตัวคูณ 0.40 (baseline ที่ทีมเทสไว้)
+        s = QSettings()
+        outer_pct       = self._read_pct(s, "outer_pct",       size, 0.0)
+        inner_pct       = self._read_pct(s, "inner_pct",       size, 0.0)
+        outer_light_pct = self._read_pct(s, "outer_light_pct", size, 40.0)
+        inner_light_pct = self._read_pct(s, "inner_light_pct", size, 40.0)
 
         logger.info(
-            "PipeInspector: [STEP] ส่ง threshold = %.2f%% (ของพื้นที่วงใน) → Detection | size=%s",
-            _pct, size,
+            "PipeInspector: [STEP] ส่ง → Detection | size=%s | "
+            "พื้นที่ outer=%.1f%% inner=%.1f%% | แสง outer=%.1f%% inner=%.1f%%",
+            size, outer_pct, inner_pct, outer_light_pct, inner_light_pct,
         )
 
-        det = Detection(frame_bgr, size=size, defthresh_pct=_pct)
+        if self._detection_new_sig:
+            # ลำดับตาม requirement: image, size, outer_pct, outer_light_pct, inner_pct, inner_light_pct
+            det = Detection(frame_bgr, size, outer_pct, outer_light_pct, inner_pct, inner_light_pct)
+        else:
+            # fallback: Detection ตัวเก่ายังรับ defthresh_pct เดียว — ใช้ inner_pct (กันพังระหว่างรอทีม sync)
+            logger.warning("PipeInspector: Detection ยัง signature เดิม — fallback ใช้ inner_pct เป็น defthresh_pct")
+            det = Detection(frame_bgr, size=size, defthresh_pct=inner_pct)
         vis = det.vis   # BGR image ที่ Detection วาด bbox + verdict ลงแล้ว
         verdict = det.verdict
 
@@ -315,14 +335,15 @@ class CameraWorker(QThread):
         logger.info("CameraWorker: warmup done in %.0f ms", (time.perf_counter() - t0) * 1000)
 
         # ── Daemon threads for continuous frame reading and live emission ──
-        read_thread = threading.Thread(
+        # เก็บ ref ไว้ join ตอน _cleanup ก่อน release กล้อง (กัน release ขณะ cap.read())
+        self._reader_thread = threading.Thread(
             target=self._read_frames_loop, daemon=True, name="FrameReader"
         )
-        emit_thread = threading.Thread(
+        self._emitter_thread = threading.Thread(
             target=self._emit_frames_loop, daemon=True, name="FrameEmitter"
         )
-        read_thread.start()
-        emit_thread.start()
+        self._reader_thread.start()
+        self._emitter_thread.start()
         logger.info("CameraWorker: frame reader + emitter threads started.")
 
         if self._trigger_mode is TriggerMode.GPIO:
@@ -560,6 +581,12 @@ class CameraWorker(QThread):
     # ── Cleanup ────────────────────────────────────────────────────────────
 
     def _cleanup(self) -> None:
+        # join daemon threads ก่อน release กล้อง — กัน cap.read() ทำงานอยู่ตอน release()
+        # (release ขณะ read = native crash บน Jetson)
+        self._stop_event.set()
+        for th in (getattr(self, "_reader_thread", None), getattr(self, "_emitter_thread", None)):
+            if th is not None and th.is_alive():
+                th.join(timeout=1.5)
         if self._cap is not None:
             self._cap.release()
             logger.info("CameraWorker: camera released.")

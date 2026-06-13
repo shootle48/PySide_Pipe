@@ -24,7 +24,6 @@ import binascii
 import csv
 import logging
 import re
-from datetime import datetime
 from pathlib import Path
 
 from datetime import datetime, time, timedelta, timezone
@@ -1130,23 +1129,6 @@ class DbViewerDialog(QDialog):
                 font-weight: bold;
             }
 
-            /* ── Verdict pills (table cellWidget) ────────────────────── */
-            #verdictPillOK {
-                background: #e8f5e9;
-                color: #2e7d32;
-                border-radius: 11px;
-                padding: 2px 14px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-            #verdictPillNG {
-                background: #ffebee;
-                color: #c62828;
-                border-radius: 11px;
-                padding: 2px 14px;
-                font-size: 12px;
-                font-weight: bold;
-            }
 
             /* ── Preview footer ──────────────────────────────────────── */
             #footerCaption {

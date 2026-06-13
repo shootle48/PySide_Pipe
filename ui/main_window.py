@@ -572,12 +572,16 @@ class MainWindow(QMainWindow):
         re-enable buttons and schedule return to live view."""
         self._in_result_view = True
         self._live_badge.setVisible(False)
-        self._frame_widget.set_result_frame(result["image_b64"], result["detections"])
+        # ใช้ .get() กัน KeyError กลาง slot ถ้า payload schema เปลี่ยนในอนาคต
+        # (slot นี้รับข้ามเธรด — crash ที่นี่ = UI ตายทั้งหน้าจอหน้างาน)
+        self._frame_widget.set_result_frame(
+            result.get("image_b64", ""), result.get("detections", [])
+        )
 
         self._update_inference_label(result.get("inference_ms"))
-        self._update_counters(result["batch"])
+        self._update_counters(result.get("batch", {}))
         self._prepend_history_row(result)
-        self._flash_verdict(result["verdict"])
+        self._flash_verdict(result.get("verdict", ""))
 
         self._capture_btn.setEnabled(True)
         self._capture_btn.setText("CAPTURE & INSPECT")
@@ -747,7 +751,7 @@ class MainWindow(QMainWindow):
 
         No widget interaction — safe to unit-test without a QApplication.
         """
-        verdict   = result["verdict"]
+        verdict   = result.get("verdict", "NG")
         confs     = result.get("detections", [])
         timestamp = result.get("timestamp", "")
         det_size  = result.get("detected_size", "") or ""
@@ -790,9 +794,15 @@ class MainWindow(QMainWindow):
         self._history_list.insertItem(0, item)
         self._history_list.setItemWidget(item, row)
 
-        # Keep list from growing without bound
+        # Keep list from growing without bound — ลบ row widget ด้วย (setItemWidget
+        # ไม่ถูกปล่อยอัตโนมัติตอน takeItem → สะสมทั้งวันบน Jetson)
+        # ต้องดึง widget ก่อน takeItem (หลัง take แล้ว itemWidget คืน None)
         while self._history_list.count() > 200:
-            self._history_list.takeItem(self._history_list.count() - 1)
+            idx = self._history_list.count() - 1
+            w = self._history_list.itemWidget(self._history_list.item(idx))
+            self._history_list.takeItem(idx)
+            if w is not None:
+                w.deleteLater()
 
     def _load_history(self, batch_id: str) -> None:
         """Populate the history list from the database on startup."""
@@ -1090,6 +1100,7 @@ class MainWindow(QMainWindow):
         """Clean shutdown: stop worker thread + close DB connection."""
         logger.info("MainWindow: closing — stopping worker...")
         self._result_timer.stop()
+        self._result_timer.blockSignals(True)   # กัน timeout ค้างคิวยิง _return_to_live ตอน teardown
 
         # Disconnect signals first to prevent stale events during shutdown
         self._disconnect_worker_signals()

@@ -476,7 +476,7 @@ class MaintenanceWidget(QWidget):
 
     # ── Reference + drift ──────────────────────────────────────────────────
 
-    def _build_mask(self, shape: Tuple[int, int]) -> np.ndarray | None:
+    def _build_mask(self, shape: tuple[int, int]) -> np.ndarray | None:
         """Build binary mask (255 inside zone, 0 outside)."""
         if len(self._zone_points) != 4:
             return None

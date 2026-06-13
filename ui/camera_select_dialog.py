@@ -171,7 +171,14 @@ class CameraSelectDialog(QDialog):
 
         self._scan_worker = _ScanWorker(skip={self._current_index})
         self._scan_worker.found.connect(self._on_scan_done)
+        # finished ยิงเสมอแม้ run() throw → กันปุ่มค้าง disabled (soft-lock ปิด dialog ไม่ได้)
+        self._scan_worker.finished.connect(self._on_scan_finished)
         self._scan_worker.start()
+
+    def _on_scan_finished(self) -> None:
+        """re-enable ปุ่มเสมอเมื่อ scan thread จบ (ครอบกรณี scan_cameras crash)"""
+        self._refresh_btn.setEnabled(True)
+        self._ok_btn.setEnabled(True)
 
     def _on_scan_done(self, cams: list) -> None:
         """รับผลจาก background scan — เรียกบน main thread ผ่าน signal"""

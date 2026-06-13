@@ -49,45 +49,57 @@ SIZE_OPTIONS = ("L", "M", "S")
 SIZE_LABELS  = {"L": "Large", "M": "Medium", "S": "Small"}
 SIZE_NUMBERS = {"L": "1",     "M": "2",      "S": "3"}
 
-# Slider = "ระดับความเข้มงวด" 0–100% (UI)
-#   ค่าที่ส่งหลังบ้าน = 100 − slider  (flip: Detection ตีความ ค่าน้อย=เข้มงวด)
-#   - slider 0%   (เข้มงวดน้อย) → ส่ง 100 (หลวมสุด)
-#   - slider 100% (เข้มงวดมาก) → ส่ง 0   (เข้มงวดสุด)
-_THRESHOLD_DEFAULT = 50     # เริ่มที่ "เข้มงวดมาก" → ส่ง 0 (ค่าที่เอาไปคำนวณ)
-_THRESHOLD_MIN     = 0
-_THRESHOLD_MAX     = 100
-_THRESHOLD_STEP    = 5
+_SLIDER_MIN  = 0
+_SLIDER_MAX  = 100
+_SLIDER_STEP = 5
+
+# ── 4 หลอดปรับ (per size) ที่ส่งให้ Detection ──────────────────────────────
+#   (suffix, label, flip, default_slider)
+#   flip=True  → พื้นที่ defect (UI = "ความเข้มงวด") เก็บ/ส่ง = 100 − slider  (ค่าเดิม)
+#   flip=False → ความสว่าง defect ที่ยอมรับ ส่ง = slider ตรงๆ (= ตัวคูณ ×150 ฝั่ง Detection)
+_CH_OUTER_PCT       = "outer_pct"
+_CH_INNER_PCT       = "inner_pct"
+_CH_OUTER_LIGHT_PCT = "outer_light_pct"
+_CH_INNER_LIGHT_PCT = "inner_light_pct"
+
+#                  suffix              label                       flip   default(slider)
+_THRESHOLD_CHANNELS = [
+    (_CH_OUTER_PCT,       "พื้นที่ Defect — วงนอก",   True,  50),
+    (_CH_INNER_PCT,       "พื้นที่ Defect — วงใน",    True,  50),
+    (_CH_OUTER_LIGHT_PCT, "ความสว่าง Defect — วงนอก", False, 40),
+    (_CH_INNER_LIGHT_PCT, "ความสว่าง Defect — วงใน",  False, 40),
+]
 
 # QSettings key — เก็บ "ค่าที่ส่งหลังบ้าน" (0–100) ตรงๆ ให้ pipeline อ่านส่ง Detection
-_SETTINGS_KEY_PCT = "detection/threshold_pct/{}"
+_SETTINGS_KEY = "detection/{ch}/{size}"
 
 
-def _load_threshold(size: str) -> int:
-    """คืน 'ตำแหน่ง slider' (0–100) ของ size นี้
+def _channel_meta(ch: str) -> tuple[bool, int]:
+    """คืน (flip, default_slider) ของ channel นี้"""
+    for suffix, _label, flip, default in _THRESHOLD_CHANNELS:
+        if suffix == ch:
+            return flip, default
+    return False, 0
 
-    QSettings เก็บค่าที่ส่งหลังบ้าน (100−slider) → แปลงกลับเป็นตำแหน่ง slider
-    """
+
+def _load_channel(ch: str, size: str) -> int:
+    """คืน 'ตำแหน่ง slider' (0–100) ของ channel/size นี้ (แปลงกลับจากค่าที่เก็บ)"""
+    flip, default = _channel_meta(ch)
     s = QSettings()
-    key = _SETTINGS_KEY_PCT.format(size)
+    key = _SETTINGS_KEY.format(ch=ch, size=size)
     if s.contains(key):
-        return 100 - int(float(s.value(key)))
-    return _THRESHOLD_DEFAULT
+        stored = int(float(s.value(key)))
+        return (100 - stored) if flip else stored
+    return default
 
 
-def _save_threshold(size: str, slider_pos: int) -> None:
-    """บันทึก threshold ลง QSettings
-
-    เก็บ 'ค่าที่ส่งหลังบ้าน' = 100 − slider_pos (flip)
-    """
-    sent = 100 - int(slider_pos)
+def _save_channel(ch: str, size: str, slider_pos: int) -> None:
+    """บันทึก channel ลง QSettings (เก็บ 'ค่าที่ส่งหลังบ้าน')"""
+    flip, _default = _channel_meta(ch)
+    sent = (100 - int(slider_pos)) if flip else int(slider_pos)
     s = QSettings()
-    s.setValue(_SETTINGS_KEY_PCT.format(size), sent)
+    s.setValue(_SETTINGS_KEY.format(ch=ch, size=size), sent)
     s.sync()   # flush ให้ pipeline (QSettings instance แยก) อ่านเห็นทันที
-
-
-def _reset_threshold(size: str) -> None:
-    """ลบ override ออก → pipeline ส่ง None → Detection ใช้ default"""
-    QSettings().remove(_SETTINGS_KEY_PCT.format(size))
 
 
 class _SizeButton(QFrame):
@@ -203,57 +215,32 @@ class BatchSetupDialog(QDialog):
             size_row.addWidget(btn)
         root.addLayout(size_row)
 
-        # ── Threshold slider (MA Mode) ─────────────────────────────────
+        # ── Threshold sliders (MA Mode) — 4 หลอด: พื้นที่ นอก/ใน + แสง นอก/ใน ──
         self._threshold_frame = QFrame()
         self._threshold_frame.setObjectName("thresholdFrame")
         th_layout = QVBoxLayout(self._threshold_frame)
         th_layout.setContentsMargins(0, 6, 0, 0)
-        th_layout.setSpacing(8)
+        th_layout.setSpacing(10)
 
+        # หัวข้อ + ปุ่ม DEFAULT
+        th_head = QHBoxLayout()
         th_title = QLabel("ความไวการตรวจจับ DEFECT  [MA MODE]")
         th_title.setObjectName("sectionLabel")
-        th_layout.addWidget(th_title)
-
-        # ค่า (ใหญ่ ซ้าย) + ปุ่ม DEFAULT (ขวา)
-        val_row = QHBoxLayout()
-        self._threshold_value_label = QLabel()
-        self._threshold_value_label.setObjectName("thresholdValue")
-        val_row.addWidget(self._threshold_value_label)
-        val_row.addStretch()
+        th_head.addWidget(th_title)
+        th_head.addStretch()
         self._default_btn = QPushButton("DEFAULT")
         self._default_btn.setObjectName("defaultBtn")
         self._default_btn.setFixedHeight(32)
         self._default_btn.setCursor(Qt.PointingHandCursor)
         self._default_btn.clicked.connect(self._on_reset_threshold)
-        val_row.addWidget(self._default_btn)
-        th_layout.addLayout(val_row)
+        th_head.addWidget(self._default_btn)
+        th_layout.addLayout(th_head)
 
-        # Slider
-        self._threshold_slider = QSlider(Qt.Horizontal)
-        self._threshold_slider.setRange(_THRESHOLD_MIN, _THRESHOLD_MAX)
-        self._threshold_slider.setSingleStep(_THRESHOLD_STEP)
-        self._threshold_slider.setPageStep(_THRESHOLD_STEP * 2)
-        self._threshold_slider.setValue(_THRESHOLD_DEFAULT)
-        self._threshold_slider.setFixedHeight(34)
-        self._threshold_slider.valueChanged.connect(self._on_slider_changed)
-        th_layout.addWidget(self._threshold_slider)
-
-        # สเกล MIN / 50% / MAX (ใต้ slider)
-        scale_row = QHBoxLayout()
-        lbl_min = QLabel("MIN")
-        lbl_min.setObjectName("dimLabel")
-        lbl_mid = QLabel("50%")
-        lbl_mid.setObjectName("dimLabel")
-        lbl_mid.setAlignment(Qt.AlignCenter)
-        lbl_max = QLabel("MAX")
-        lbl_max.setObjectName("dimLabel")
-        lbl_max.setAlignment(Qt.AlignRight)
-        scale_row.addWidget(lbl_min)
-        scale_row.addStretch()
-        scale_row.addWidget(lbl_mid)
-        scale_row.addStretch()
-        scale_row.addWidget(lbl_max)
-        th_layout.addLayout(scale_row)
+        # สร้าง 4 หลอด
+        self._sliders: dict[str, QSlider]  = {}
+        self._value_labels: dict[str, QLabel] = {}
+        for ch, label, _flip, default in _THRESHOLD_CHANNELS:
+            th_layout.addLayout(self._make_threshold_channel(ch, label, default))
 
         root.addWidget(self._threshold_frame)
 
@@ -299,24 +286,53 @@ class BatchSetupDialog(QDialog):
 
         root.addLayout(btn_row)
 
-        # อัปเดต label ค่าเริ่มต้น
-        self._update_value_label(_THRESHOLD_DEFAULT)
-
     # ── Threshold helpers ──────────────────────────────────────────────────
 
-    def _load_slider_for_size(self, size: str) -> None:
-        """โหลดค่า QSettings ของ size นี้แล้วตั้ง slider"""
-        val = _load_threshold(size)
-        self._threshold_slider.blockSignals(True)
-        self._threshold_slider.setValue(val)
-        self._threshold_slider.blockSignals(False)
-        self._update_value_label(val)
+    def _make_threshold_channel(self, ch: str, label: str, default: int) -> QVBoxLayout:
+        """สร้าง 1 หลอด: หัวข้อ (ซ้าย) + ค่า (ขวา) + slider ด้านล่าง"""
+        box = QVBoxLayout()
+        box.setSpacing(3)
 
-    def _update_value_label(self, slider_pos: int) -> None:
-        """อัปเดต label แสดงระดับความเข้มงวด + ค่าที่ส่งหลังบ้าน (ช่วย MA debug)"""
-        self._threshold_value_label.setText(
-            f"ความเข้มงวด {slider_pos}% "
-        )
+        head = QHBoxLayout()
+        name = QLabel(label)
+        name.setObjectName("dimLabel")
+        head.addWidget(name)
+        head.addStretch()
+        val = QLabel()
+        val.setObjectName("channelValue")
+        head.addWidget(val)
+        box.addLayout(head)
+
+        sld = QSlider(Qt.Horizontal)
+        sld.setRange(_SLIDER_MIN, _SLIDER_MAX)
+        sld.setSingleStep(_SLIDER_STEP)
+        sld.setPageStep(_SLIDER_STEP * 2)
+        sld.setValue(default)
+        sld.setFixedHeight(28)
+        sld.valueChanged.connect(lambda v, c=ch: self._on_slider_changed(c, v))
+        box.addWidget(sld)
+
+        self._sliders[ch] = sld
+        self._value_labels[ch] = val
+        self._update_value_label(ch, default)
+        return box
+
+    def _load_slider_for_size(self, size: str) -> None:
+        """โหลดค่า QSettings ของ size นี้แล้วตั้ง slider ทุกหลอด"""
+        for ch, sld in self._sliders.items():
+            val = _load_channel(ch, size)
+            sld.blockSignals(True)
+            sld.setValue(val)
+            sld.blockSignals(False)
+            self._update_value_label(ch, val)
+
+    def _update_value_label(self, ch: str, slider_pos: int) -> None:
+        """อัปเดต label ของหลอดนั้น — พื้นที่=ความเข้มงวด(+ค่าส่ง), แสง=ความสว่าง"""
+        flip, _default = _channel_meta(ch)
+        if flip:
+            self._value_labels[ch].setText(f"ความเข้มงวด {slider_pos}%  (ส่ง {100 - slider_pos}%)")
+        else:
+            self._value_labels[ch].setText(f"ความสว่าง {slider_pos}%")
 
     # ── Slots ─────────────────────────────────────────────────────────────
 
@@ -327,25 +343,28 @@ class BatchSetupDialog(QDialog):
         if self._threshold_mode == "on":
             self._load_slider_for_size(size)
 
-    def _on_slider_changed(self, value: int) -> None:
+    def _on_slider_changed(self, ch: str, value: int) -> None:
         # snap ให้เป็น step
-        snapped = round(value / _THRESHOLD_STEP) * _THRESHOLD_STEP
-        snapped = max(_THRESHOLD_MIN, min(_THRESHOLD_MAX, snapped))
+        snapped = round(value / _SLIDER_STEP) * _SLIDER_STEP
+        snapped = max(_SLIDER_MIN, min(_SLIDER_MAX, snapped))
+        sld = self._sliders[ch]
         if snapped != value:
-            self._threshold_slider.blockSignals(True)
-            self._threshold_slider.setValue(snapped)
-            self._threshold_slider.blockSignals(False)
-        self._update_value_label(snapped)
+            sld.blockSignals(True)
+            sld.setValue(snapped)
+            sld.blockSignals(False)
+        self._update_value_label(ch, snapped)
 
     def _on_reset_threshold(self) -> None:
-        """รีเซ็ต slider กลับ default (เข้มงวดมาก 100% → ส่ง 0) — บันทึกตอน START"""
-        self._threshold_slider.setValue(_THRESHOLD_DEFAULT)
-        self._update_value_label(_THRESHOLD_DEFAULT)
+        """รีเซ็ตทุกหลอดกลับ default — บันทึกตอน START"""
+        for ch, _label, _flip, default in _THRESHOLD_CHANNELS:
+            self._sliders[ch].setValue(default)
+            self._update_value_label(ch, default)
 
     def _on_accept(self) -> None:
-        """บันทึก threshold ลง QSettings แล้ว accept"""
+        """บันทึกทุกหลอดลง QSettings แล้ว accept"""
         if self._threshold_mode == "on":
-            _save_threshold(self._selected_size, self._threshold_slider.value())
+            for ch, sld in self._sliders.items():
+                _save_channel(ch, self._selected_size, sld.value())
         self.accept()
 
     def _highlight_size(self, size: str) -> None:
@@ -423,6 +442,11 @@ class BatchSetupDialog(QDialog):
                 font-size: 20px;
                 font-weight: bold;
                 color: #1a1d23;
+            }
+            #channelValue {
+                font-size: 13px;
+                font-weight: bold;
+                color: #1565c0;
             }
             #defaultBtn {
                 background: #ffffff;
