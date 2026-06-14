@@ -26,6 +26,7 @@ Logger naming convention:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import random
 import threading
@@ -231,12 +232,16 @@ class RS485InputWorker(QThread):
         watch_bits: list[int],
         poll_interval_s: float = POLL_INTERVAL_S,
         debounce_ms: int = DEBOUNCE_MS,
+        bus_lock: "threading.Lock | None" = None,
     ) -> None:
         super().__init__()
         self._io = io
         self._watch_bits = watch_bits
         self._poll_interval_s = poll_interval_s
         self._debounce_ms = debounce_ms
+        # lock ใช้ร่วมกับ RS485OutputWriter — กัน read/write ชนกันบน serial เส้นเดียว
+        # (minimalmodbus ไม่ thread-safe). None = ไม่มี lock (เช่นตอน test เดี่ยวๆ)
+        self._bus_lock = bus_lock
         self._stop_event = threading.Event()
         self._last_edge_ms: dict[int, float] = {}
 
@@ -256,7 +261,10 @@ class RS485InputWorker(QThread):
             # Note: ถ้า read_inputs FAIL → log ที่ฝั่ง smartsense (เพราะเรียก library)
             #       ส่วน retry / health logic เป็นของ app ของผมเอง
             try:
-                values = self._io.read_inputs(self._watch_bits)
+                # ถือ bus_lock เฉพาะตอนคุยกับบัส — กันชนกับ write verdict
+                lock = self._bus_lock or contextlib.nullcontext()
+                with lock:
+                    values = self._io.read_inputs(self._watch_bits)
             except (OSError, _ModbusException) as exc:
                 smartsense_log.debug(f"read_inputs failed: {exc}")
                 fail_count += 1
@@ -335,10 +343,11 @@ class RS485OutputWriter(QObject):
 
     def __init__(
         self,
-        io,                       # RS485DIO หรือ MockRS485DIO (ต้องมี write_pulse)
+        io,                       # RS485DIO หรือ MockRS485DIO (ต้องมี write_output)
         ok_bit: int = 0,
         ng_bit: int = 1,
         pulse_ms: int = 200,
+        bus_lock: "threading.Lock | None" = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -346,6 +355,8 @@ class RS485OutputWriter(QObject):
         self._ok_bit  = ok_bit
         self._ng_bit  = ng_bit
         self._pulse_s = pulse_ms / 1000.0
+        # lock เดียวกับ RS485InputWorker — serialize การเขียนกับการ poll อ่าน
+        self._bus_lock = bus_lock
         app_log.info(
             f"RS485OutputWriter: ok_bit={ok_bit} ng_bit={ng_bit} pulse={pulse_ms}ms"
         )
@@ -372,16 +383,23 @@ class RS485OutputWriter(QObject):
         ).start()
 
     def _do_pulse(self, verdict: str, bit: int) -> None:
-        """Worker function — ทำ write_pulse จริงใน background"""
+        """Worker function — ส่ง pulse เองแบบ active→sleep→inactive
+        ถือ bus_lock เฉพาะตอน write แต่ละครั้ง (ไม่ถือตอน sleep) → poll อ่าน input
+        ต่อได้ระหว่าง 200ms นี้ ไม่พลาด trigger และไม่มี Modbus frame ชนกัน
+        """
+        lock = self._bus_lock or contextlib.nullcontext()
         try:
-            # หมายเหตุ: write_pulse เป็น call ลงไปยัง Smart-Sense library
-            #          ถ้า fail → log ที่ smartsense logger
-            self._io.write_pulse(bit, pulse_time=self._pulse_s)
+            # หมายเหตุ: write_output เป็น call ลงไปยัง Smart-Sense library — fail → smartsense logger
+            with lock:
+                self._io.write_output(bit, 1)        # active (HIGH)
+            time.sleep(self._pulse_s)                 # ปล่อย lock ระหว่างหน่วง → poll อ่านได้
+            with lock:
+                self._io.write_output(bit, 0)        # inactive (LOW)
             app_log.info(f"verdict {verdict} sent to PLC (bit {bit})")
             self.write_complete.emit(verdict, True)
         except (OSError, _ModbusException) as exc:
             smartsense_log.error(
-                f"write_pulse(bit={bit}) FAILED for verdict {verdict}: {exc}"
+                f"write_output(bit={bit}) FAILED for verdict {verdict}: {exc}"
             )
             app_log.warning(
                 f"failed to send verdict {verdict} to PLC — sorter อาจไม่ทำงาน"

@@ -141,6 +141,7 @@ class MainWindow(QMainWindow):
 
         # ── Start RS485 input worker (optional) ────────────────────────────
         self._io_worker: RS485InputWorker | None = None
+        self._output_writer: RS485OutputWriter | None = None
         self._io_source = None   # keep reference so GC doesn't kill mock
         self._init_rs485()
 
@@ -179,24 +180,31 @@ class MainWindow(QMainWindow):
             logger.warning(f"RS485: unknown mode '{RS485_MODE}' — disabled.")
             return
 
-        rs485_bus_lock = threading.Lock()
+        # สร้าง worker — ครอบ try/except กัน error หน้างานทำแอปเปิดไม่ขึ้น
+        # (ถ้าพัง → log + รันต่อโดยไม่มี RS485 ยังตรวจด้วยมือ/upload ได้)
+        try:
+            rs485_bus_lock = threading.Lock()   # lock เดียว แชร์ read poll + write verdict
 
-        self._io_worker = RS485InputWorker(
-            io=self._io_source, watch_bits=RS485_WATCH_BITS,
-            bus_lock=rs485_bus_lock,
-        )
-        self._io_worker.pulse_detected.connect(self._on_rs485_pulse)
-        self._io_worker.io_health_changed.connect(self._on_rs485_health)
-        self._io_worker.start()
+            self._io_worker = RS485InputWorker(
+                io=self._io_source, watch_bits=RS485_WATCH_BITS,
+                bus_lock=rs485_bus_lock,
+            )
+            self._io_worker.pulse_detected.connect(self._on_rs485_pulse)
+            self._io_worker.io_health_changed.connect(self._on_rs485_health)
+            self._io_worker.start()
 
-        self._output_writer = RS485OutputWriter(
-            io=self._io_source,
-            ng_bit=RS485_NG_OUTPUT_BIT,
-            bus_lock=rs485_bus_lock,
-        )
-        self._worker.result_ready.connect(
-            lambda payload: self._output_writer.send_verdict(payload["verdict"])
-        )
+            self._output_writer = RS485OutputWriter(
+                io=self._io_source,
+                ng_bit=RS485_NG_OUTPUT_BIT,
+                bus_lock=rs485_bus_lock,
+            )
+            self._worker.result_ready.connect(
+                lambda payload: self._output_writer.send_verdict(payload["verdict"])
+            )
+        except Exception as exc:   # noqa: BLE001 — degrade gracefully หน้างาน
+            logger.error("RS485: worker setup failed (%s) — running without RS485", exc)
+            self._io_worker = None
+            self._output_writer = None
 
     @Slot(int)
     def _on_rs485_pulse(self, bit: int) -> None:
