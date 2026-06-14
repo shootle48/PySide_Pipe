@@ -806,22 +806,23 @@ class DbViewerDialog(QDialog):
         if not path:
             return
 
-        rows = self._db.get_recent_inspections(self._current_batch, limit=500)
+        # ดึงตาม batch + date filter ที่กำลังแสดงอยู่ (ให้ตรงกับหน้า DB Viewer) — ทั้งหมด ไม่ตัด 500
+        df, dt = self._date_from, self._date_to
+        total = self._db.count_inspections(self._current_batch, df, dt)
+        rows = self._db.get_inspections_page(self._current_batch, df, dt, limit=max(total, 1), offset=0)
 
         try:
             with open(path, "w", newline="", encoding="utf-8-sig") as f:  # utf-8-sig = BOM for Excel
                 writer = csv.writer(f)
-                writer.writerow([
-                    "piece_id", "verdict", "detected_size", "detections", "timestamp",
-                ])
-                for r in rows:
-                    dets = ", ".join(d["label"] for d in r.get("detections", []))
+                # คอลัมน์ตรงกับตาราง DB Viewer: No. | Verdict | Defects | Timestamp
+                writer.writerow(["No.", "Verdict", "Defects", "Timestamp"])
+                for i, r in enumerate(rows):
+                    dets = ", ".join(d.get("label", "") for d in r.get("detections", []))
                     writer.writerow([
-                        r["piece_id"],
+                        i + 1,                              # No. ต่อเนื่อง (แถวบน=ล่าสุด เหมือน viewer)
                         r["verdict"],
-                        r.get("detected_size", "") or "",
                         dets or "—",
-                        r["timestamp"],
+                        iso_to_local_str(r["timestamp"], fmt="%Y-%m-%d %H:%M:%S"),  # local เหมือนตาราง
                     ])
             QMessageBox.information(self, "Export Complete", f"Saved to:\n{path}")
         except (OSError, csv.Error) as exc:
