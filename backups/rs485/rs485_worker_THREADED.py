@@ -1,3 +1,12 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# ⚠️ BACKUP — เวอร์ชัน THREADED (spawn เธรดต่อ verdict)
+# ───────────────────────────────────────────────────────────────────────────
+# นี่คือไฟล์สำรอง ไม่ได้ถูก import โดยตรง
+# วิธีใช้: ถ้าเวอร์ชัน queue (core/rs485_worker.py) มีปัญหาหน้างาน →
+#   ก็อปเนื้อหาไฟล์นี้ทั้งหมด ไปวางทับ core/rs485_worker.py แล้ว restart
+# ⚠️ เวอร์ชันนี้ pulse อาจซ้อนถ้า verdict มาห่าง < pulse_ms (PLC นับ NG ขาด)
+#    — ใช้เป็น fallback เท่านั้น ปกติให้ใช้ queue
+# ═══════════════════════════════════════════════════════════════════════════
 """
 rs485_worker.py
 ───────────────
@@ -28,7 +37,6 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import queue
 import random
 import threading
 import time
@@ -332,12 +340,11 @@ class RS485OutputWriter(QObject):
         writer.send_verdict("OK")   # → pulse bit 0
         writer.send_verdict("NG")   # → pulse bit 1
 
-    Threading (สำคัญ — กัน pulse ซ้อน):
-        ใช้ **writer thread เดียว + queue** (ไม่ spawn เธรดต่อชิ้นแบบเดิม)
-        send_verdict() แค่ put เข้าคิว (non-blocking, UI ไม่ค้าง) → writer thread
-        ดึงทีละลูกแล้วส่ง pulse จนจบ (HIGH→sleep→LOW) ก่อนเริ่มลูกถัดไป
-        → ทุก verdict ออกเป็น pulse แยกครบ ไม่มีทางรวมกัน → PLC นับครบทุกชิ้น
-        (เดิม spawn เธรดทุกชิ้น: 2 ชิ้นห่าง <pulse → pulse รวมเป็นลูกเดียว PLC นับขาด)
+    Threading (เวอร์ชัน THREADED — spawn เธรดต่อ verdict):
+        send_verdict() spawn threading.Thread (daemon) ต่อชิ้น → ส่ง pulse แล้วจบ
+        ⚠️ ถ้า 2 verdict มาห่างกัน < pulse_ms → pulse อาจ "ซ้อน/รวมกัน" PLC นับ NG ขาด
+           (นี่คือเหตุผลที่เวอร์ชันหลักเปลี่ยนไปใช้ queue) — ใช้เวอร์ชันนี้เป็น fallback เท่านั้น
+        ยังมี bus_lock กัน Modbus frame ชน เหมือนเวอร์ชัน queue
     """
 
     # Signal เผื่อ UI อยากรู้ว่า output ส่งสำเร็จหรือไม่ (optional)
@@ -359,48 +366,27 @@ class RS485OutputWriter(QObject):
         self._pulse_s = pulse_ms / 1000.0
         # lock เดียวกับ RS485InputWorker — serialize การเขียนกับการ poll อ่าน (กัน frame ชน)
         self._bus_lock = bus_lock
-        # คิว + writer thread เดียว — ส่ง pulse ทีละลูกตามลำดับ (กันซ้อน)
-        self._queue: "queue.Queue[tuple[str, int] | None]" = queue.Queue()
-        self._running = True
-        self._thread = threading.Thread(
-            target=self._writer_loop, daemon=True, name="RS485Writer"
-        )
-        self._thread.start()
+        self._stopped = False
         app_log.info(
-            f"RS485OutputWriter: ok_bit={ok_bit} ng_bit={ng_bit} "
-            f"pulse={pulse_ms}ms (queued single-writer)"
+            f"RS485OutputWriter [THREADED]: ok_bit={ok_bit} ng_bit={ng_bit} "
+            f"pulse={pulse_ms}ms (spawn-per-verdict)"
         )
 
     @Slot(str)
     def send_verdict(self, verdict: str) -> None:
-        """
-        ส่ง verdict กลับไปหา PLC — non-blocking (แค่ put เข้าคิว)
-
-        Args:
-            verdict: "OK" หรือ "NG"
-        """
+        """ส่ง verdict กลับไปหา PLC — spawn เธรด daemon ต่อชิ้น (non-blocking)"""
+        if self._stopped:
+            return
         if verdict not in ("OK", "NG"):
             app_log.warning(f"RS485OutputWriter: unknown verdict '{verdict}', skipped")
             return
 
         bit = self._ok_bit if verdict == "OK" else self._ng_bit
-        self._queue.put((verdict, bit))   # writer thread จะส่งทีละลูกตามลำดับ
+        threading.Thread(target=self._do_pulse, args=(verdict, bit), daemon=True).start()
 
-    def _writer_loop(self) -> None:
-        """เธรดเดียวที่ส่ง pulse ตามคิว — ลูกถัดไปเริ่มหลังลูกก่อนหน้า LOW เสร็จ"""
-        while self._running:
-            try:
-                item = self._queue.get(timeout=0.2)
-            except queue.Empty:
-                continue
-            if item is None:        # sentinel จาก stop()
-                break
-            verdict, bit = item
-            self._emit_pulse(verdict, bit)
-
-    def _emit_pulse(self, verdict: str, bit: int) -> None:
+    def _do_pulse(self, verdict: str, bit: int) -> None:
         """ส่ง 1 pulse: HIGH → หน่วง pulse_s → LOW. ถือ bus_lock เฉพาะตอน write
-        (ปล่อยตอน sleep → input poll อ่านต่อได้ ไม่พลาด trigger, ไม่มี frame ชน)
+        (ปล่อยตอน sleep → input poll อ่านต่อได้ ไม่มี frame ชน)
         """
         lock = self._bus_lock or contextlib.nullcontext()
         try:
@@ -422,11 +408,8 @@ class RS485OutputWriter(QObject):
             self.write_complete.emit(verdict, False)
 
     def stop(self) -> None:
-        """หยุด writer thread อย่างสะอาด (เรียกตอนปิดโปรแกรม)"""
-        self._running = False
-        self._queue.put(None)   # ปลุก thread ให้ออกจาก get() ทันที
-        if self._thread.is_alive():
-            self._thread.join(timeout=1.0)
+        """ไม่รับ verdict ใหม่; เธรด daemon ที่ค้างอยู่จะจบเองภายใน pulse_ms"""
+        self._stopped = True
 
 
 # ──────────────────────────────────────────────────────────────────────────

@@ -171,7 +171,7 @@ class MainWindow(QMainWindow):
                 return
             try:
                 self._io_source = LoggingRS485DIO(RS485DIO())
-            except (OSError, TypeError, ValueError) as exc:
+            except Exception as exc:   # rs485_dio raise RuntimeError ตอนเปิดพอร์ตไม่ได้ด้วย
                 logger.error(f"RS485: init failed ({exc}). Running without RS485 input.")
                 return
             logger.info("RS485: real hardware mode OK.")
@@ -1122,6 +1122,8 @@ class MainWindow(QMainWindow):
         if self._io_worker is not None:
             self._io_worker.stop()
             self._io_worker.wait(2000)
+        if self._output_writer is not None:
+            self._output_writer.stop()   # หยุด writer thread + เคลียร์คิว verdict
         if self._io_source is not None and hasattr(self._io_source, "stop"):
             self._io_source.stop()   # MockRS485DIO has its own pulse thread
 
