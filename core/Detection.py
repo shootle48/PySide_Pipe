@@ -5,7 +5,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-DEBUG_DRAW = True
+DEBUG_DRAW = True # True/False
 
 def _check_cuda() -> bool:
     try:
