@@ -23,7 +23,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from ui.main_window import MainWindow
+from pipe_inspector.ui.main_window import MainWindow
 
 
 # ── Logging setup (console + rotating file × 2) ───────────────────────────

@@ -37,7 +37,6 @@ Returns:
 from __future__ import annotations
 
 from PySide6.QtCore    import QLocale, QSettings, Qt, Signal
-from PySide6.QtGui     import QFont
 from PySide6.QtWidgets import (
     QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QSlider,
     QSpinBox, QVBoxLayout, QWidget,

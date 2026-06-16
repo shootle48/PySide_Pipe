@@ -19,7 +19,6 @@ Persistence (QSettings):
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import cv2
 import numpy as np
@@ -31,10 +30,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from pipe_inspector import paths
+
 logger = logging.getLogger(__name__)
 
 # ── Config ─────────────────────────────────────────────────────────────────
-REF_FRAME_PATH = Path(__file__).parent.parent / "data" / "calibration_ref.npy"
+REF_FRAME_PATH = paths.DATA_DIR / "calibration_ref.npy"
 DEFAULT_THRESHOLD = 30    # MSE threshold (0-100 slider range)
 DRIFT_CHECK_EVERY = 5     # compute drift every N frames (save CPU)
 

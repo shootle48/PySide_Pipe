@@ -28,7 +28,7 @@ from pathlib import Path
 
 from datetime import datetime, time, timedelta, timezone
 
-from PySide6.QtCore    import QDate, QLocale, Qt, QThread, Signal, Slot
+from PySide6.QtCore    import QDate, QLocale, Qt, Slot
 from PySide6.QtGui     import QColor, QFont, QImage, QPixmap
 from PySide6.QtWidgets import (
     QDateEdit, QDialog, QFileDialog, QHBoxLayout, QLabel, QListWidget,
@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QFrame,
 )
 
-from pipe_inspector.ui.theme import MONO_FONT, VERDICT_COLORS
+from pipe_inspector.ui.theme import MONO_FONT
 from pipe_inspector.utils.timefmt import iso_to_local_str
 
 # จำนวน inspection ต่อหน้า (แบ่งหน้าเพื่อไม่โหลดทั้งหมดเข้า RAM)
