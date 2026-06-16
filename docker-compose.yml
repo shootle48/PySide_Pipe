@@ -1,0 +1,18 @@
+# Headless dev/CI compose — runs the test suite inside the container.
+#
+# ⚠️  Not for the live HMI: no camera / RS485 / GUI passthrough on Windows Docker.
+#     The real inspection app runs natively (python main.py).
+#
+# Usage:
+#   docker compose run --rm tests      # pytest
+#   docker compose run --rm lint       # ruff
+services:
+  tests:
+    build: .
+    environment:
+      QT_QPA_PLATFORM: offscreen
+    command: pytest -q
+
+  lint:
+    build: .
+    command: ruff check src tests

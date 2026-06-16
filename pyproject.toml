@@ -28,8 +28,8 @@ dev = [
     "ruff>=0.6",
 ]
 
-# NOTE: console-script entry point (pipe-inspector = "pipe_inspector.app:main")
-# is added in Phase 5, once app.py exists in the package.
+[project.scripts]
+pipe-inspector = "pipe_inspector.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -36,7 +36,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 from PySide6.QtCore import QCoreApplication, QTimer
 
-from core.rs485_worker import MockRS485DIO, RS485InputWorker
+from pipe_inspector.hardware.rs485_worker import MockRS485DIO, RS485InputWorker
 
 
 # ── Logging: show timestamp + level so we see event order clearly ─────────

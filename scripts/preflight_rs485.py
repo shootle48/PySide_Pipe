@@ -73,7 +73,7 @@ def check_dio_read(port: str) -> "tuple[bool, object]":
     try:
         import minimalmodbus
         import serial
-        from rs485_dio import RS485DIO
+        from pipe_inspector.hardware.rs485_dio import RS485DIO
         dio = RS485DIO(port=port, clear_outputs_on_start=False)
         values = dio.read_inputs()
         print(f"  ✓ read_inputs() → {values}")

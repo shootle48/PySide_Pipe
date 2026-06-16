@@ -213,18 +213,22 @@ batch_state.reset(expected_total)
 
 ## 6. ไฟล์ที่เกี่ยวข้อง
 
+> โครงสร้างย้ายเป็น **src/ layout** (`src/pipe_inspector/…`) — workflows/rationale ด้านบนยังเหมือนเดิม (อ้างชื่อ component ไม่ใช่ path), เปลี่ยนแค่ตำแหน่งไฟล์
+
 | File | หน้าที่ |
 |------|--------|
-| `main.py` | entry point, สร้าง QApplication + MainWindow |
-| `ui/main_window.py` | UI หลัก, owner ของ DB/BatchState/Worker |
-| `ui/db_viewer.py` | dialog ดู/ลบ/export ข้อมูล |
-| `pipeline.py` | `CameraWorker` (QThread) + `_should_save_image` |
-| `batch_state.py` | in-memory batch counter + write-through |
-| `database.py` | SQLite wrapper, migrations, cleanup, export helpers |
-| `fix_timestamp.py` | debug helper แก้ timestamp เพื่อทดสอบ cleanup |
+| `main.py` → `src/pipe_inspector/app.py` | entry shim / QApplication + MainWindow bootstrap |
+| `src/pipe_inspector/ui/main_window.py` | UI หลัก, owner ของ DB/BatchState/Worker |
+| `src/pipe_inspector/ui/dialogs/db_viewer.py` | dialog ดู/ลบ/export ข้อมูล |
+| `src/pipe_inspector/vision/camera_worker.py` | `CameraWorker` (QThread) + `_should_save_image` |
+| `src/pipe_inspector/vision/inspector.py` | `PipeInspector` (เรียก Detection → result dict) |
+| `src/pipe_inspector/domain/batch_state.py` | in-memory batch counter + write-through |
+| `src/pipe_inspector/storage/database.py` | SQLite wrapper, migrations, cleanup, export helpers |
+| `src/pipe_inspector/config/settings.py` + `config/settings.yaml` | centralized config (camera/trigger/rs485/detection) |
+| `src/pipe_inspector/paths.py` | project-root / data / logs / DB path resolution |
 | `/etc/systemd/system/pipe-inspector.service` | (Jetson) service file — ปัจจุบันปิดใช้งาน |
 | `~/.config/autostart/pipe-inspector.desktop` | (Jetson) XDG autostart — ใช้งานจริง |
 
 ---
 
-_Last updated: 2026-04-21_
+_Last updated: 2026-06-16 — migrated to src/ layered layout (pipe_inspector package)_

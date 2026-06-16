@@ -1,127 +1,16 @@
-"""
-main.py  (PySide6 Pipe Inspector)
-─────────────────────────────────
-Entry point. Creates the QApplication and launches MainWindow.
+"""main.py — thin entry-point shim.
 
-Run:
-    cd pipe-inspector-pyside
+The real bootstrap lives in ``pipe_inspector.app.main``. This file is kept at the
+repo root so the familiar ``python main.py`` (and any existing autostart / systemd
+units that reference it) keep working unchanged after the standard-layout refactor.
+
+Equivalent entry points:
     python main.py
-
-Config (edit ui/main_window.py top section):
-    CAMERA_INDEX   = 1        # USB camera index (run camera_check.py if unsure)
-    TRIGGER_MODE   = "manual" # "manual" | "timer" | "gpio"
-    TIMER_INTERVAL = 6.0      # seconds (timer mode only)
+    python -m pipe_inspector
+    pipe-inspector            # console script (see pyproject [project.scripts])
 """
 
-from __future__ import annotations
-
-import logging
-import sys
-# import PySide6
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
-
-from PySide6.QtWidgets import QApplication, QMessageBox
-
-from pipe_inspector.ui.main_window import MainWindow
-
-
-# ── Logging setup (console + rotating file × 2) ───────────────────────────
-def _setup_logging() -> None:
-    """
-    Configure root logger + แยก log ออกเป็น 2 ไฟล์ตามฝั่ง:
-
-      logs/app.log         — ทุกอย่าง (รวมทั้งสองฝั่ง)
-      logs/smartsense.log  — เฉพาะฝั่ง Smart-Sense library / hardware
-                            (logger name ขึ้นต้นด้วย "smartsense.")
-
-    เวลามีปัญหาที่หน้างาน:
-      - ปัญหา detection / UI / state         → ดู app.log
-      - ปัญหา trigger ไม่เข้า / sorter ไม่ทำงาน → ดู smartsense.log
-        (ถ้า smartsense.log มี ERROR → ปัญหาอยู่ฝั่ง hardware/library Smart-Sense)
-        (ถ้า smartsense.log clean แต่ app.log ERROR → ปัญหาฝั่งโค้ดผม)
-    """
-    log_dir = Path(__file__).parent / "logs"
-    log_dir.mkdir(exist_ok=True)
-
-    full_fmt = logging.Formatter(
-        "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    short_fmt = logging.Formatter(
-        "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-        datefmt="%H:%M:%S",
-    )
-
-    # ── Console handler (เหมือนเดิม — รับทุก log) ────────────────────────
-    console = logging.StreamHandler(sys.stderr)
-    console.setFormatter(short_fmt)
-
-    # ── app.log — รวมทุก log จากทั้งสองฝั่ง ──────────────────────────────
-    app_file = RotatingFileHandler(
-        log_dir / "app.log",
-        maxBytes=5 * 1024 * 1024,   # 5 MB
-        backupCount=5,
-        encoding="utf-8",
-    )
-    app_file.setFormatter(full_fmt)
-
-    # ── smartsense.log — เฉพาะฝั่ง Smart-Sense ───────────────────────────
-    # Filter: รับเฉพาะ logger ที่ขึ้นต้นด้วย "smartsense."
-    class SmartSenseFilter(logging.Filter):
-        def filter(self, record: logging.LogRecord) -> bool:
-            return record.name.startswith("smartsense")
-
-    smartsense_file = RotatingFileHandler(
-        log_dir / "smartsense.log",
-        maxBytes=2 * 1024 * 1024,   # 2 MB (แยกไฟล์เล็กกว่า)
-        backupCount=3,
-        encoding="utf-8",
-    )
-    smartsense_file.setFormatter(full_fmt)
-    smartsense_file.addFilter(SmartSenseFilter())
-
-    # ── Mount handlers บน root logger ────────────────────────────────────
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-    for h in list(root.handlers):
-        root.removeHandler(h)
-    root.addHandler(console)
-    root.addHandler(app_file)
-    root.addHandler(smartsense_file)
-
-
-_setup_logging()
-logger = logging.getLogger(__name__)
-
-
-def main() -> None:
-    import time
-    t_launch = time.perf_counter()
-
-    app = QApplication(sys.argv)
-    # ⚠️ ต้องตั้ง org + app name คู่กัน — ไม่งั้น QSettings() ไม่มี scope ที่ persist
-    #    (ทำให้ค่า threshold/camera/calibration save ไม่ติด = "ใช้ default อย่างเดียว")
-    app.setOrganizationName("SmartSense")
-    app.setApplicationName("Pipe Inspector")
-
-    try:
-        t0 = time.perf_counter()
-        window = MainWindow()
-        logger.info("Startup: MainWindow init %.0f ms", (time.perf_counter() - t0) * 1000)
-    except (RuntimeError, ImportError, OSError, ValueError) as exc:
-        logger.critical("Startup failed: %s", exc, exc_info=True)
-        QMessageBox.critical(
-            None,
-            "Startup Error",
-            f"ไม่สามารถเริ่มต้นโปรแกรมได้:\n\n{exc}\n\nดู logs/app.log สำหรับรายละเอียด",
-        )
-        sys.exit(1)
-
-    window.showFullScreen()
-    logger.info("Startup: app ready in %.0f ms (total)", (time.perf_counter() - t_launch) * 1000)
-    sys.exit(app.exec())
-
+from pipe_inspector.app import main
 
 if __name__ == "__main__":
     main()

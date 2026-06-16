@@ -1,0 +1,21 @@
+.git/
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Runtime data / outputs — never needed in the image
+data/
+logs/
+exports/
+backups/
+DataSet/
+*.db
+.env
+
+# Local-only
+.claude/

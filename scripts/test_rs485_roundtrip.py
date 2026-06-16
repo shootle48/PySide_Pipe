@@ -49,7 +49,7 @@ from PySide6.QtWidgets import (
     QPushButton, QVBoxLayout, QWidget,
 )
 
-from core.rs485_worker import (
+from pipe_inspector.hardware.rs485_worker import (
     MockRS485DIO, RS485InputWorker, RS485OutputWriter,
 )
 

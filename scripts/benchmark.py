@@ -81,8 +81,8 @@ def measure_import_time() -> float:
     """วัดเวลา import + สร้าง PipeInspector object"""
     import importlib, time
     t0 = time.perf_counter()
-    from core import pipeline as _p
-    inspector = _p.PipeInspector()
+    from pipe_inspector.vision.inspector import PipeInspector
+    inspector = PipeInspector()
     elapsed = (time.perf_counter() - t0) * 1000
     return elapsed
 
@@ -100,7 +100,7 @@ def run_benchmark(
     รัน PipeInspector.inspect() กับ frame list ซ้ำ n_runs รอบ
     คืน list of latencies (ms)
     """
-    from core.pipeline import PipeInspector
+    from pipe_inspector.vision.inspector import PipeInspector
     inspector = PipeInspector()
 
     latencies = []
