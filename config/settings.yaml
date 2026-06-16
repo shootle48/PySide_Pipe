@@ -1,0 +1,31 @@
+# Pipe Inspector — default settings (single source of truth for static config).
+#
+# Override order (lowest → highest precedence):
+#   built-in dataclass defaults  <  this file  <  PIPE_INSPECTOR_* env vars
+#
+# Runtime user tweaks (detection thresholds per size, the camera index chosen
+# in the UI) are persisted separately via Qt QSettings — this file only holds
+# the startup defaults that used to be hardcoded at the top of ui/main_window.py.
+
+camera:
+  index: 2                 # USB camera index            (was CAMERA_INDEX)
+
+trigger:
+  mode: manual             # manual | timer | gpio       (was TRIGGER_MODE)
+  timer_interval: 6.0      # seconds, timer mode only     (was TIMER_INTERVAL)
+
+ui:
+  result_view_secs: 4      # seconds to show result before returning to live (was RESULT_VIEW_SECS)
+
+rs485:
+  mode: "off"              # off | mock | real            (was RS485_MODE)
+  watch_bits: [0]          # inputs to watch (I0 = trigger sensor)  (was RS485_WATCH_BITS)
+  ng_output_bit: 1         # output bit pulsed on NG       (was RS485_NG_OUTPUT_BIT)
+
+detection:
+  threshold_mode: "on"     # on | off — debug-draw / threshold overlay (was DETECTION_THRESHOLD_MODE)
+  defaults:                # default slider values per size; persisted overrides live in QSettings
+    outer_pct: 50.0
+    inner_pct: 50.0
+    outer_light_pct: 40.0
+    inner_light_pct: 40.0
