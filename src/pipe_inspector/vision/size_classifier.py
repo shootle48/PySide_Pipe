@@ -15,7 +15,7 @@ Storage:
   - Phase 3 จะมี calibration UI ใน MaintenanceWidget สำหรับ capture ตัวอย่าง 3 ขนาด
 
 Usage:
-    from core.size_classifier import SizeClassifier
+    from pipe_inspector.vision.size_classifier import SizeClassifier
 
     cls = SizeClassifier()                  # โหลดจาก QSettings, fallback default
     size = cls.classify(radius_px=95)       # → "M"

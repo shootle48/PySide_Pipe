@@ -36,8 +36,8 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QFrame,
 )
 
-from core.constants import MONO_FONT, VERDICT_COLORS
-from core.utils     import iso_to_local_str
+from pipe_inspector.ui.theme import MONO_FONT, VERDICT_COLORS
+from pipe_inspector.utils.timefmt import iso_to_local_str
 
 # จำนวน inspection ต่อหน้า (แบ่งหน้าเพื่อไม่โหลดทั้งหมดเข้า RAM)
 _PAGE_SIZE = 10

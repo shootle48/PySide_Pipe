@@ -14,7 +14,7 @@ Install:
     pip install minimalmodbus pyserial
 
 Example:
-    from rs485_dio import RS485DIO
+    from pipe_inspector.hardware.rs485_dio import RS485DIO
 
     io = RS485DIO()
     print(io.read_input(0))
@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Callable, Iterable, List, Optional, Sequence, Union
+from typing import Callable, List, Optional, Sequence, Union
 
 import minimalmodbus
 import serial

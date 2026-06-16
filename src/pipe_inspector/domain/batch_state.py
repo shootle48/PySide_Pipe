@@ -15,7 +15,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime
 
-from core.utils import utcnow_iso
+from pipe_inspector.utils.timefmt import utcnow_iso
 
 logger = logging.getLogger(__name__)
 

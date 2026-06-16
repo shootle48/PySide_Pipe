@@ -41,18 +41,19 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from core.batch_state     import BatchStateManager
-from core.constants       import MONO_FONT, STATUS_COLORS, TriggerMode, VERDICT_COLORS
-from core.database        import DatabaseManager
-from core.pipeline        import CameraWorker
-from core.size_classifier import SizeClassifier
-from core.utils           import iso_to_local_str
+from pipe_inspector.domain.batch_state import BatchStateManager
+from pipe_inspector.domain.enums import TriggerMode
+from pipe_inspector.ui.theme import MONO_FONT, STATUS_COLORS, VERDICT_COLORS
+from pipe_inspector.storage.database import DatabaseManager
+from pipe_inspector.vision.camera_worker import CameraWorker
+from pipe_inspector.vision.size_classifier import SizeClassifier
+from pipe_inspector.utils.timefmt import iso_to_local_str
 from ui.frame_widget          import FrameWidget
 from ui.db_viewer             import DbViewerDialog
 from ui.camera_select_dialog  import CameraSelectDialog, scan_cameras
 from ui.maintenance_widget    import MaintenanceWidget
 from ui.batch_setup_dialog    import request_batch_setup
-from core.rs485_worker import RS485InputWorker, RS485OutputWriter, MockRS485DIO, LoggingRS485DIO
+from pipe_inspector.hardware.rs485_worker import RS485InputWorker, RS485OutputWriter, MockRS485DIO, LoggingRS485DIO
 # Note: `rs485_dio` (real hardware) imports lazily — see _init_rs485() below
 # ไม่ import ตรงนี้เพราะต้องใช้ minimalmodbus/pyserial ที่ไม่มีบน Windows dev
 
@@ -101,7 +102,7 @@ class MainWindow(QMainWindow):
         self._camera_index = self._resolve_camera_index()
         # บอก Detection ว่าอยู่ MA mode ไหน (เปิดเส้น debug วงนอก/วงใน)
         # set module flag ตรงๆ — reliable กว่า QSettings cross-instance
-        import core.Detection as _detection_mod
+        import pipe_inspector.vision.detection as _detection_mod
         _detection_mod.DEBUG_DRAW = (DETECTION_THRESHOLD_MODE == "on")
 
         # ── Backend singletons ─────────────────────────────────────────────
@@ -162,7 +163,7 @@ class MainWindow(QMainWindow):
 
         elif RS485_MODE == "real":
             try:
-                from rs485_dio import RS485DIO
+                from pipe_inspector.hardware.rs485_dio import RS485DIO
             except ImportError as exc:
                 logger.error(
                     f"RS485: cannot import rs485_dio ({exc}). " 

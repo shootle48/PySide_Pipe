@@ -17,9 +17,13 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from pipe_inspector import paths
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_DB_PATH = Path(__file__).parent.parent / "data" / "pipe_inspector.db"
+# DB stays at <project-root>/data/pipe_inspector.db (resolved via paths.py) so
+# existing inspection history is preserved after the move into src/.
+DEFAULT_DB_PATH = paths.DB_PATH
 
 # ── Storage Threshold Config ───────────────────────────────────────────────
 MAX_RECORD_AGE_DAYS = 90     # ลบ record ที่เก่ากว่า 3 เดือน

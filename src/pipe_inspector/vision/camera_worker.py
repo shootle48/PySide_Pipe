@@ -1,34 +1,17 @@
-"""
-pipeline.py  (PySide6 edition)
-──────────────────────────────
-CV logic is 1-to-1 with FastAPI version (Test_1.ipynb mapping unchanged).
+"""camera_worker.py — FrameBuffer + CameraWorker (QThread).
 
-Key difference from FastAPI version:
-  - CameraWorker extends QThread instead of threading.Thread
-  - Results are delivered via Qt Signals instead of asyncio.Queue
-  - No bridge / asyncio / WebSocket involved at all
+Moved from core/pipeline.py during the standard-layout refactor. Behaviour is
+unchanged: QThread managing the full stop-and-go inspection cycle
+(capture → inspect → persist → emit Qt signals).
 
 Signal flow:
   frame_ready(np.ndarray BGR)  →  FrameWidget.set_live_frame()     ~20 fps
   result_ready(dict)           →  MainWindow._on_result()           per trigger
   status_changed(str)          →  MainWindow._on_status()           scanning/processing/idle
-
-Result dict shape:
-  {
-    "verdict":    "OK" | "NG",
-    "detections": [{"label": str,                       # ประเภท defect เช่น "รอยแตก"/"เศษขี้เหล็ก"
-                    "zone":  str,                       # optional: "land"/"inner"
-                    "bbox":  {"x", "y", "w", "h"}}],    # optional (เฉพาะ size_mismatch)
-    "image_b64":  str,           # base64 JPEG of the inspected frame (RGB)
-    # piece_id: ใช้ UUID ภายใน DB เท่านั้น — ไม่ include ใน result dict
-    "timestamp":  str,           # UTC ISO-8601
-    "batch":      {"id": str, "total": int, "ng": int},
-  }
 """
 
 from __future__ import annotations
 
-import base64
 import logging
 import os
 import sqlite3
@@ -37,20 +20,15 @@ import time
 
 import cv2
 import numpy as np
-from PySide6.QtCore import QSettings, QThread, Signal
+from PySide6.QtCore import QThread, Signal
 
-from core.Detection import Detection
-
-from core.constants import TriggerMode, Verdict, WorkerStatus
-from core.utils import utcnow_iso
+from pipe_inspector.domain.enums import TriggerMode, Verdict, WorkerStatus
+from pipe_inspector.utils.timefmt import utcnow_iso
+from pipe_inspector.vision.inspector import PipeInspector
 
 logger = logging.getLogger(__name__)
 
-# ── Tunable constants (mirror Test_1.ipynb exactly) ───────────────────────
-MIN_DEFECT_AREA    = 50        # px² — ignore contours smaller than this
-INNER_RADIUS_RATIO = 0.5       # fraction of pipe radius to inspect
-JPEG_QUALITY       = 85        # inspection frame JPEG quality
-SIGNIFICANT_AREA   = MIN_DEFECT_AREA * 10   # area → max confidence (~500 px²)
+# ── Tunable constants ──────────────────────────────────────────────────────
 CAPTURE_DELAY      = 0.3       # seconds to wait after trigger (pipe settles)
 TIMER_INTERVAL     = 6.0       # seconds between auto-triggers (timer mode)
 STREAM_FPS         = 20        # live view frame rate cap
@@ -87,94 +65,6 @@ class FrameBuffer:
     def ready(self) -> bool:
         with self._lock:
             return self._frame is not None
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PipeInspector — CV logic (direct refactor of Test_1.ipynb)
-# ══════════════════════════════════════════════════════════════════════════════
-
-class PipeInspector:
-    """
-    Thin wrapper ที่เรียก Detection แล้ว encode ผลลัพธ์เป็น base64 result dict.
-    CV logic ทั้งหมดอยู่ใน core/Detection.py
-    """
-
-    def __init__(
-        self,
-        jpeg_quality: int = JPEG_QUALITY,
-        # size_classifier=None,   # ยังรองรับ interface เดิม แต่ไม่ใช้แล้ว
-    ) -> None:
-        self.jpeg_quality = jpeg_quality
-        # ตรวจ signature ของ Detection 1 ครั้ง — รองรับทั้งตัวเก่า (defthresh_pct เดียว)
-        # และตัวใหม่ 6 พารามิเตอร์ (image, size, outer_pct, outer_light_pct, inner_pct, inner_light_pct)
-        import inspect as _inspect
-        self._detection_new_sig = len(_inspect.signature(Detection.__init__).parameters) >= 7
-
-    @staticmethod
-    def _read_pct(settings: QSettings, ch: str, size: str, default: float) -> float:
-        """อ่านค่า % ของ channel/size จาก QSettings (default ถ้าไม่มี/พัง)"""
-        raw = settings.value(f"detection/{ch}/{size}", default)
-        try:
-            return float(raw)
-        except (TypeError, ValueError):
-            return float(default)
-
-    def inspect(self, frame_bgr: np.ndarray, size: str = "L") -> dict:
-        # 4 ค่าที่ MA ตั้งผ่าน slider (เก็บที่ QSettings, per size) → ส่งให้ Detection
-        # Detection ตัวใหม่: ค่ายิ่งมาก = ยิ่งเข้มงวด (ทั้งพื้นที่และแสง)
-        #   default (production ไม่ override) = ตรงกับ default slider ของ dialog:
-        #     พื้นที่ 50 (กลาง), แสง 40 (≈ baseline ทีม)
-        s = QSettings()
-        outer_pct       = self._read_pct(s, "outer_pct",       size, 50.0)
-        inner_pct       = self._read_pct(s, "inner_pct",       size, 50.0)
-        outer_light_pct = self._read_pct(s, "outer_light_pct", size, 40.0)
-        inner_light_pct = self._read_pct(s, "inner_light_pct", size, 40.0)
-
-        logger.info(
-            "PipeInspector: [STEP] ส่ง → Detection | size=%s | "
-            "พื้นที่ outer=%.1f%% inner=%.1f%% | แสง outer=%.1f%% inner=%.1f%%",
-            size, outer_pct, inner_pct, outer_light_pct, inner_light_pct,
-        )
-
-        if self._detection_new_sig:
-            # ลำดับตาม requirement: image, size, outer_pct, outer_light_pct, inner_pct, inner_light_pct
-            det = Detection(frame_bgr, size, outer_pct, outer_light_pct, inner_pct, inner_light_pct)
-        else:
-            # fallback: Detection ตัวเก่ายังรับ defthresh_pct เดียว — ใช้ inner_pct (กันพังระหว่างรอทีม sync)
-            logger.warning("PipeInspector: Detection ยัง signature เดิม — fallback ใช้ inner_pct เป็น defthresh_pct")
-            det = Detection(frame_bgr, size=size, defthresh_pct=inner_pct)
-        vis = det.vis   # BGR image ที่ Detection วาด bbox + verdict ลงแล้ว
-        verdict = det.verdict
-
-        # แยกประเภท defect จาก flag ของทีม Detection → บันทึกลง DB ผ่าน detections
-        # (getattr กัน Detection เวอร์ชันเก่าที่ยังไม่มี flag — ได้ list ว่างเหมือนเดิม)
-        detections = []
-        if getattr(det, "defect1", False):
-            detections.append({"label": "รอยแตก", "zone": "land"})
-        if getattr(det, "defect2", False):
-            detections.append({"label": "เศษขี้เหล็ก", "zone": "inner"})
-
-        # encode vis → base64 JPEG (BGR → RGB ก่อน)
-        vis_rgb = cv2.cvtColor(vis, cv2.COLOR_BGR2RGB)
-        success, buffer = cv2.imencode(
-            '.jpg', vis_rgb, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality]
-        )
-        if not success:
-            raise RuntimeError("cv2.imencode failed.")
-        image_b64 = base64.b64encode(buffer).decode('utf-8')
-
-        logger.info(
-            "PipeInspector: %s | defects=%s",
-            verdict, [d["label"] for d in detections] or "-",
-        )
-
-        return {
-            "verdict":        verdict,
-            "detections":     detections,   # ประเภท defect (กรอบวาดลงรูป vis แล้ว)
-            "image_b64":      image_b64,
-            "pipe_radius_px": None,
-            "detected_size":  "",
-        }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
