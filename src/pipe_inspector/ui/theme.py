@@ -458,3 +458,318 @@ def main_window_stylesheet() -> str:
                 background: #1976d2;
             }
         """
+
+
+def db_viewer_stylesheet() -> str:
+    """QSS for the DB viewer dialog (extracted verbatim from DbViewerDialog._apply_stylesheet)."""
+    return """
+            QDialog, QWidget {
+                background: #eef0f3;
+                color: #1a1d23;
+                font-family: "Segoe UI", system-ui, sans-serif;
+                font-size: 14px;
+            }
+
+            #dialogTitle {
+                font-size: 17px;
+                font-weight: bold;
+                letter-spacing: 1px;
+                color: #1a1d23;
+            }
+
+            #divider {
+                color: #cbd1d9;
+                background: #cbd1d9;
+                max-height: 1px;
+            }
+
+            #sectionTitle {
+                font-size: 12px;
+                font-weight: bold;
+                letter-spacing: 2px;
+                color: #52606d;
+                text-transform: uppercase;
+            }
+
+            /* Batch list */
+            #batchList {
+                background: #ffffff;
+                border: 1px solid #cbd1d9;
+                border-radius: 6px;
+                font-family: "Consolas", monospace;
+                font-size: 12px;
+                padding: 2px;
+            }
+            #batchList::item {
+                padding: 12px 10px;
+                border-bottom: 1px solid #eef0f3;
+                color: #1a1d23;
+            }
+            #batchList::item:selected {
+                background: #e3f2fd;
+                border-left: 4px solid #1565c0;
+                color: #0d47a1;
+            }
+            #batchList::item:hover:!selected {
+                background: #f1f3f6;
+            }
+
+            /* Inspection table */
+            #inspectionTable {
+                background: #ffffff;
+                border: 1px solid #cbd1d9;
+                border-radius: 6px;
+                gridline-color: #e3e6eb;
+                font-family: "Consolas", monospace;
+                font-size: 13px;
+                alternate-background-color: #f7f8fa;
+                color: #1a1d23;
+            }
+            #inspectionTable::item {
+                padding: 10px 8px;
+            }
+            #inspectionTable::item:selected {
+                background: #e3f2fd;
+                color: #0d47a1;
+            }
+            QHeaderView::section {
+                background: #f1f3f6;
+                color: #1a1d23;
+                border: none;
+                border-bottom: 2px solid #cbd1d9;
+                border-right: 1px solid #e3e6eb;
+                padding: 12px 8px;
+                font-size: 12px;
+                font-weight: bold;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+            }
+
+            /* Stats */
+            #statLabel {
+                font-family: "Consolas", monospace;
+                font-size: 14px;
+                font-weight: bold;
+                color: #1a1d23;
+                padding: 4px 8px;
+            }
+
+            /* ── Top bar ─────────────────────────────────────────────── */
+            #topBar {
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+            }
+            /* label ใน topBar โปร่งใส — ไม่ให้พื้นเทา global ขึ้นเป็นกล่อง */
+            #topBar QLabel { background: transparent; }
+            #topBar QDateEdit {
+                background: #ffffff;
+                border: 1px solid #cbd1d9;
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 13px;
+                min-width: 110px;
+            }
+            #topBar QDateEdit::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
+                width: 22px;
+                background: transparent;
+                border-left: 1px solid #cbd1d9;
+            }
+
+            /* ── Calendar popup ──────────────────────────────────────────
+               ⚠️ ต้อง re-style เพราะกฎ global "QWidget { background }" ด้านบน
+               จะไหลลงไปทับ internal view ของปฏิทิน → กดเลือกวันไม่ได้     */
+            QCalendarWidget QWidget {
+                background: #ffffff;
+                color: #1a1d23;
+            }
+            QCalendarWidget QAbstractItemView:enabled {
+                background: #ffffff;
+                color: #1a1d23;
+                selection-background-color: #1565c0;
+                selection-color: #ffffff;
+                outline: 0;
+            }
+            QCalendarWidget QAbstractItemView:disabled {
+                color: #cbd1d9;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar {
+                background: #f7f8fa;
+            }
+            QCalendarWidget QToolButton {
+                background: transparent;
+                color: #1a1d23;
+                font-size: 13px;
+                font-weight: bold;
+                icon-size: 18px;
+                padding: 2px 6px;
+            }
+            QCalendarWidget QToolButton:hover {
+                background: #e3f2fd;
+                border-radius: 4px;
+            }
+            QCalendarWidget QMenu {
+                background: #ffffff;
+                color: #1a1d23;
+            }
+            QCalendarWidget QSpinBox {
+                background: #ffffff;
+                color: #1a1d23;
+                selection-background-color: #1565c0;
+                selection-color: #ffffff;
+            }
+            #showingLabel {
+                font-size: 13px;
+                color: #52606d;
+                padding: 0 8px;
+            }
+            #pageIconBtn {
+                background: #ffffff;
+                color: #1565c0;
+                border: 1px solid #cbd1d9;
+                border-radius: 6px;
+                font-size: 15px;
+                font-weight: bold;
+            }
+            #pageIconBtn:hover:!disabled  { background: #e3f2fd; border-color: #1565c0; }
+            #pageIconBtn:disabled         { color: #cbd1d9; }
+
+            /* ── Panel header + chips ────────────────────────────────── */
+            #panelHeader {
+                background: transparent;
+                font-size: 15px;
+                font-weight: bold;
+                color: #1a1d23;
+            }
+            #okChip {
+                background: #e8f5e9;
+                color: #2e7d32;
+                border-radius: 11px;
+                padding: 3px 12px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            #ngChip {
+                background: #ffebee;
+                color: #c62828;
+                border-radius: 11px;
+                padding: 3px 12px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            #idChip {
+                background: transparent;
+                color: #52606d;
+                padding: 3px 4px;
+                font-family: "Consolas", monospace;
+                font-size: 12px;
+                font-weight: bold;
+            }
+
+
+            /* ── Preview footer ──────────────────────────────────────── */
+            #footerCaption {
+                background: transparent;
+                font-size: 11px;
+                font-weight: bold;
+                letter-spacing: 1px;
+                color: #7b8794;
+            }
+            #defectTypeValue {
+                background: transparent;
+                font-size: 14px;
+                font-weight: bold;
+                color: #c62828;
+                padding-left: 8px;
+            }
+
+            /* Button palette (secondaryBtn/dangerBtn) — defined canonically in MainWindow QSS */
+
+            /* Big primary CLOSE button */
+            #closeBtn {
+                background: #1565c0;
+                color: #ffffff;
+                border: 2px solid #0d47a1;
+                border-radius: 10px;
+                font-size: 17px;
+                font-weight: bold;
+                letter-spacing: 2px;
+                padding: 12px 24px;
+            }
+            #closeBtn:hover  { background: #1976d2; }
+            #closeBtn:pressed { background: #0d47a1; }
+
+            /* Image preview */
+            #previewPanel {
+                background: #ffffff;
+                border: 1px solid #cbd1d9;
+                border-radius: 6px;
+                padding: 4px;
+            }
+            #imagePreview {
+                background: #1a1d23;
+                border-radius: 4px;
+                color: #a8b0ba;
+                font-size: 13px;
+            }
+
+            /* Splitter */
+            QSplitter::handle {
+                background: #cbd1d9;
+                width: 2px;
+            }
+
+            /* Scrollbars (bigger for touch) */
+            QScrollBar:vertical {
+                background: #eef0f3;
+                width: 14px;
+                border-radius: 7px;
+            }
+            QScrollBar::handle:vertical {
+                background: #a8b0ba;
+                border-radius: 7px;
+                min-height: 40px;
+            }
+            QScrollBar::handle:vertical:hover { background: #52606d; }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical { height: 0; }
+            QScrollBar:horizontal {
+                background: #eef0f3;
+                height: 14px;
+                border-radius: 7px;
+            }
+            QScrollBar::handle:horizontal {
+                background: #a8b0ba;
+                border-radius: 7px;
+                min-width: 40px;
+            }
+            QScrollBar::handle:horizontal:hover { background: #52606d; }
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal { width: 0; }
+
+            /* Message/Confirm dialogs spawned from this viewer */
+            QMessageBox {
+                background: #ffffff;
+                font-size: 14px;
+            }
+            QMessageBox QLabel {
+                background: transparent;
+                color: #1a1d23;
+                font-size: 14px;
+            }
+            QMessageBox QPushButton {
+                background: #1565c0;
+                color: #ffffff;
+                border: 2px solid #0d47a1;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+                min-width: 100px;
+                min-height: 38px;
+                padding: 6px 18px;
+            }
+            QMessageBox QPushButton:hover  { background: #1976d2; }
+            QMessageBox QPushButton:pressed { background: #0d47a1; }
+        """
