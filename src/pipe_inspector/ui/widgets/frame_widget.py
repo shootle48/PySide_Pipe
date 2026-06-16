@@ -15,17 +15,21 @@ import base64
 import binascii
 import logging
 
-logger = logging.getLogger(__name__)
-
 import cv2
 import numpy as np
-
-from PySide6.QtCore    import Qt
-from PySide6.QtGui     import (
-    QColor, QFont, QFontMetrics, QImage, QPainter, QPen, QPixmap,
+from PySide6.QtCore import Qt
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontMetrics,
+    QImage,
+    QPainter,
+    QPen,
+    QPixmap,
 )
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
+logger = logging.getLogger(__name__)
 
 # ── Defect colour map (mirrors canvas.js DEFECT_COLORS) ───────────────────
 _DEFECT_COLORS: dict[str, str] = {

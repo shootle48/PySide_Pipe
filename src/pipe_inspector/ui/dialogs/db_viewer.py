@@ -24,16 +24,27 @@ import binascii
 import csv
 import logging
 import re
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 
-from datetime import datetime, time, timedelta, timezone
-
-from PySide6.QtCore    import QDate, QLocale, Qt, Slot
-from PySide6.QtGui     import QColor, QFont, QImage, QPixmap
+from PySide6.QtCore import QDate, QLocale, Qt, Slot
+from PySide6.QtGui import QColor, QFont, QImage, QPixmap
 from PySide6.QtWidgets import (
-    QDateEdit, QDialog, QFileDialog, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QMessageBox, QPushButton, QSplitter,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QFrame,
+    QDateEdit,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from pipe_inspector.ui.theme import MONO_FONT
@@ -85,8 +96,8 @@ class DbViewerDialog(QDialog):
         self._page       = 0
         self._page_size  = _PAGE_SIZE
         self._total      = 0
-        self._date_from: "str | None" = None 
-        self._date_to:   "str | None" = None
+        self._date_from: str | None = None
+        self._date_to:   str | None = None
 
         self.setWindowTitle("Database Viewer")
 
@@ -202,7 +213,7 @@ class DbViewerDialog(QDialog):
         self._enlarge_calendar(self._date_to_edit)
         self._date_to_edit.dateChanged.connect(self._on_apply_filter)
         row.addWidget(self._date_to_edit)
-        
+
         self._clear_filter_btn = QPushButton("รีเซ็ต")
         self._clear_filter_btn.setObjectName("secondaryBtn")
         self._clear_filter_btn.setFixedHeight(34)

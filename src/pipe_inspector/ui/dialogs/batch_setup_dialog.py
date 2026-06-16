@@ -36,12 +36,18 @@ Returns:
 
 from __future__ import annotations
 
-from PySide6.QtCore    import QLocale, QSettings, Qt, Signal
+from PySide6.QtCore import QLocale, QSettings, Qt, Signal
 from PySide6.QtWidgets import (
-    QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QSlider,
-    QSpinBox, QVBoxLayout, QWidget,
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSlider,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
-
 
 # ลำดับ: ใหญ่ → กลาง → เล็ก  (1, 2, 3)
 SIZE_OPTIONS = ("L", "M", "S")

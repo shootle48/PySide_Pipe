@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Callable, List, Optional, Sequence, Union
+from collections.abc import Callable, Sequence
 
 import minimalmodbus
 import serial
@@ -36,7 +36,7 @@ import serial
 logger = logging.getLogger(__name__)
 
 
-BitValue = Union[int, bool]
+BitValue = int | bool
 
 
 class RS485DIO:
@@ -122,7 +122,7 @@ class RS485DIO:
                 f"Invalid {name}: {bit}. Valid range is {self.VALID_MIN}-{self.VALID_MAX}."
             )
 
-    def _validate_bit_indices(self, bits: Sequence[int], name: str = "bits") -> List[int]:
+    def _validate_bit_indices(self, bits: Sequence[int], name: str = "bits") -> list[int]:
         if not isinstance(bits, Sequence) or isinstance(bits, (str, bytes)):
             raise TypeError(f"{name} must be a sequence of int, e.g. [0, 1, 2]")
 
@@ -143,7 +143,7 @@ class RS485DIO:
             return 1
         raise ValueError(f"{name} must be 0/1 or False/True, got {value!r}")
 
-    def _validate_values(self, values: Sequence[BitValue], name: str = "values") -> List[int]:
+    def _validate_values(self, values: Sequence[BitValue], name: str = "values") -> list[int]:
         if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
             raise TypeError(f"{name} must be a sequence of 0/1 values.")
 
@@ -186,7 +186,7 @@ class RS485DIO:
             )
         )
 
-    def read_inputs(self, input_indices: Optional[Sequence[int]] = None) -> List[int]:
+    def read_inputs(self, input_indices: Sequence[int] | None = None) -> list[int]:
         """
         Read multiple input bits once.
 
@@ -227,7 +227,7 @@ class RS485DIO:
         input_index: int,
         mode: str = "always",
         interval: float = 0.1,
-        callback: Optional[Callable[[int], None]] = None,
+        callback: Callable[[int], None] | None = None,
         pulse_edge: str = "rising",
     ) -> None:
         """
@@ -252,7 +252,7 @@ class RS485DIO:
         self._validate_continue_mode(mode)
         self._validate_pulse_edge(pulse_edge)
 
-        last_value: Optional[int] = None
+        last_value: int | None = None
 
         while True:
             value = self.read_input(input_index)
@@ -269,10 +269,10 @@ class RS485DIO:
 
     def continue_read_inputs(
         self,
-        input_indices: Optional[Sequence[int]] = None,
+        input_indices: Sequence[int] | None = None,
         mode: str = "always",
         interval: float = 0.1,
-        callback: Optional[Callable[[List[int]], None]] = None,
+        callback: Callable[[list[int]], None] | None = None,
         pulse_edge: str = "rising",
     ) -> None:
         """
@@ -301,7 +301,7 @@ class RS485DIO:
         if input_indices is not None:
             self._validate_bit_indices(input_indices, name="input_indices")
 
-        last_values: Optional[List[int]] = None
+        last_values: list[int] | None = None
 
         while True:
             values = self.read_inputs(input_indices)
@@ -432,7 +432,7 @@ class RS485DIO:
             )
         )
 
-    def read_outputs(self, output_indices: Optional[Sequence[int]] = None) -> List[int]:
+    def read_outputs(self, output_indices: Sequence[int] | None = None) -> list[int]:
         """
         Read output coil status.
 

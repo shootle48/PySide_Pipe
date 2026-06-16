@@ -454,7 +454,7 @@ class CameraWorker(QThread):
 
     def _setup_gpio(self) -> None:
         try:
-            import Jetson.GPIO as GPIO          # type: ignore
+            import Jetson.GPIO as GPIO  # type: ignore
             GPIO.setmode(GPIO.BCM)
             GPIO.setup(18, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
             GPIO.add_event_detect(18, GPIO.RISING, callback=self._gpio_callback, bouncetime=500)

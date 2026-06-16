@@ -22,12 +22,17 @@ import logging
 
 import cv2
 import numpy as np
-
-from PySide6.QtCore import Qt, QSettings, Signal, Slot
+from PySide6.QtCore import QSettings, Qt, Signal, Slot
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QSlider,
-    QVBoxLayout, QWidget,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
 )
 
 from pipe_inspector import paths

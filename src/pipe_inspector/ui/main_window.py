@@ -32,28 +32,49 @@ from __future__ import annotations
 import logging
 import threading
 
-from PySide6.QtCore    import QLocale, QSize, Qt, QSettings, QTimer, Slot
-from PySide6.QtGui     import QColor, QFont
+from PySide6.QtCore import QLocale, QSettings, QSize, Qt, QTimer, Slot
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QProgressBar,
-    QPushButton, QSizePolicy, QSpinBox, QSplitter, QTabWidget,
-    QVBoxLayout, QWidget,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QSizePolicy,
+    QSpinBox,
+    QSplitter,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from pipe_inspector.config import load_settings
 from pipe_inspector.domain.batch_state import BatchStateManager
 from pipe_inspector.domain.enums import TriggerMode
-from pipe_inspector.ui.theme import MONO_FONT, STATUS_COLORS, VERDICT_COLORS
+from pipe_inspector.hardware.rs485_worker import (
+    LoggingRS485DIO,
+    MockRS485DIO,
+    RS485InputWorker,
+    RS485OutputWriter,
+)
 from pipe_inspector.storage.database import DatabaseManager
+from pipe_inspector.ui.dialogs.batch_setup_dialog import request_batch_setup
+from pipe_inspector.ui.dialogs.camera_select_dialog import CameraSelectDialog, scan_cameras
+from pipe_inspector.ui.dialogs.db_viewer import DbViewerDialog
+from pipe_inspector.ui.dialogs.maintenance_widget import MaintenanceWidget
+from pipe_inspector.ui.theme import MONO_FONT, STATUS_COLORS, VERDICT_COLORS
+from pipe_inspector.ui.widgets.frame_widget import FrameWidget
+from pipe_inspector.utils.timefmt import iso_to_local_str
 from pipe_inspector.vision.camera_worker import CameraWorker
 from pipe_inspector.vision.size_classifier import SizeClassifier
-from pipe_inspector.utils.timefmt import iso_to_local_str
-from pipe_inspector.ui.widgets.frame_widget import FrameWidget
-from pipe_inspector.ui.dialogs.db_viewer import DbViewerDialog
-from pipe_inspector.ui.dialogs.camera_select_dialog import CameraSelectDialog, scan_cameras
-from pipe_inspector.ui.dialogs.maintenance_widget import MaintenanceWidget
-from pipe_inspector.ui.dialogs.batch_setup_dialog import request_batch_setup
-from pipe_inspector.hardware.rs485_worker import RS485InputWorker, RS485OutputWriter, MockRS485DIO, LoggingRS485DIO
+
 # Note: `rs485_dio` (real hardware) imports lazily — see _init_rs485() below
 # ไม่ import ตรงนี้เพราะต้องใช้ minimalmodbus/pyserial ที่ไม่มีบน Windows dev
 
@@ -171,7 +192,7 @@ class MainWindow(QMainWindow):
                 from pipe_inspector.hardware.rs485_dio import RS485DIO
             except ImportError as exc:
                 logger.error(
-                    f"RS485: cannot import rs485_dio ({exc}). " 
+                    f"RS485: cannot import rs485_dio ({exc}). "
                     f"Install `pip install minimalmodbus pyserial` or set RS485_MODE='off'/'mock'."
                 )
                 return

@@ -15,10 +15,16 @@ from __future__ import annotations
 import logging
 
 import cv2
-from PySide6.QtCore    import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
 )
 
 logger = logging.getLogger(__name__)

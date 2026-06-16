@@ -32,14 +32,16 @@ import queue
 import random
 import threading
 import time
-from typing import Protocol, Sequence
+from collections.abc import Sequence
+from typing import Protocol
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
 try:
     from minimalmodbus import ModbusException as _ModbusException
 except ImportError:
-    class _ModbusException(OSError): pass  # type: ignore[no-redef]
+    class _ModbusException(OSError):  # type: ignore[no-redef]
+        pass
 
 # ── Two separate loggers — ทำให้แยกฝั่งได้ชัดเจน ────────────────────────────
 smartsense_log = logging.getLogger("smartsense.dio")   # ฝั่ง Smart-Sense library
@@ -233,7 +235,7 @@ class RS485InputWorker(QThread):
         watch_bits: list[int],
         poll_interval_s: float = POLL_INTERVAL_S,
         debounce_ms: int = DEBOUNCE_MS,
-        bus_lock: "threading.Lock | None" = None,
+        bus_lock: threading.Lock | None = None,
     ) -> None:
         super().__init__()
         self._io = io
@@ -349,7 +351,7 @@ class RS485OutputWriter(QObject):
         ok_bit: int = 0,
         ng_bit: int = 1,
         pulse_ms: int = 200,
-        bus_lock: "threading.Lock | None" = None,
+        bus_lock: threading.Lock | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -360,7 +362,7 @@ class RS485OutputWriter(QObject):
         # lock เดียวกับ RS485InputWorker — serialize การเขียนกับการ poll อ่าน (กัน frame ชน)
         self._bus_lock = bus_lock
         # คิว + writer thread เดียว — ส่ง pulse ทีละลูกตามลำดับ (กันซ้อน)
-        self._queue: "queue.Queue[tuple[str, int] | None]" = queue.Queue()
+        self._queue: queue.Queue[tuple[str, int] | None] = queue.Queue()
         self._running = True
         self._thread = threading.Thread(
             target=self._writer_loop, daemon=True, name="RS485Writer"

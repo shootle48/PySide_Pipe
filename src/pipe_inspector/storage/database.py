@@ -239,10 +239,10 @@ class DatabaseManager:
     @staticmethod
     def _build_inspection_filter(
         batch_id: str,
-        date_from: "str | None",
-        date_to: "str | None",
-        verdict: "str | None",
-    ) -> "tuple[str, list]":
+        date_from: str | None,
+        date_to: str | None,
+        verdict: str | None,
+    ) -> tuple[str, list]:
         """สร้าง WHERE clause + params แบบ dynamic (ใช้ร่วม count + page query)"""
         where = ["batch_id = ?"]
         params: list = [batch_id]
@@ -260,9 +260,9 @@ class DatabaseManager:
     def count_inspections(
         self,
         batch_id: str,
-        date_from: "str | None" = None,
-        date_to: "str | None" = None,
-        verdict: "str | None" = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        verdict: str | None = None,
     ) -> int:
         """นับจำนวน inspection ตาม filter (ไว้คำนวณจำนวนหน้า + stats)"""
         clause, params = self._build_inspection_filter(batch_id, date_from, date_to, verdict)
@@ -275,8 +275,8 @@ class DatabaseManager:
     def get_inspections_page(
         self,
         batch_id: str,
-        date_from: "str | None" = None,
-        date_to: "str | None" = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict]:
@@ -300,7 +300,7 @@ class DatabaseManager:
             for row in rows
         ]
 
-    def get_inspection_image(self, piece_id: str) -> "str | None":
+    def get_inspection_image(self, piece_id: str) -> str | None:
         """โหลด image_b64 ของ record เดียว (lazy — เรียกตอน user คลิกแถว)"""
         with self._lock:
             row = self._conn.execute(
