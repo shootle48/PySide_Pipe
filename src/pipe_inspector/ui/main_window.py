@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from pipe_inspector.config import load_settings
 from pipe_inspector.domain.batch_state import BatchStateManager
 from pipe_inspector.domain.enums import TriggerMode
 from pipe_inspector.ui.theme import MONO_FONT, STATUS_COLORS, VERDICT_COLORS
@@ -58,24 +59,29 @@ from pipe_inspector.hardware.rs485_worker import RS485InputWorker, RS485OutputWr
 
 logger = logging.getLogger(__name__)
 
-# ── Config ─────────────────────────────────────────────────────────────────
-CAMERA_INDEX     = 2
-TRIGGER_MODE     = TriggerMode.MANUAL
-TIMER_INTERVAL   = 6.0
-RESULT_VIEW_SECS = 4           # seconds to show result before returning to live
+# ── Config ───────────────────────────────────────────────────────────────────
+# Loaded from config/settings.yaml (override per-station there, or via
+# PIPE_INSPECTOR_* env vars). Runtime user tweaks (detection thresholds per size,
+# the camera index picked in the UI) are still persisted separately via QSettings.
+_config = load_settings()
+
+CAMERA_INDEX     = _config.camera.index
+TRIGGER_MODE     = TriggerMode(_config.trigger.mode)
+TIMER_INTERVAL   = _config.trigger.timer_interval
+RESULT_VIEW_SECS = _config.ui.result_view_secs           # seconds to show result before returning to live
 
 # RS485 I/O integration (trigger via external sensor/PLC)
 #   "off"  — ไม่ใช้ RS485 เลย (dev บน Windows ที่ไม่มี hardware)
-#   "mock" — ใช้ MockRS485DIO (tes   t WFH — สุ่มยิง pulse ทุก 2s)
+#   "mock" — ใช้ MockRS485DIO (test WFH — สุ่มยิง pulse ทุก 2s)
 #   "real" — ใช้ RS485DIO จริง (Jetson + USB-to-RS485 dongle)
-RS485_MODE       = "off"
-RS485_WATCH_BITS = [0]
-RS485_NG_OUTPUT_BIT = 1        # inputs ที่ watch (I0 = trigger sensor default)
+RS485_MODE       = _config.rs485.mode
+RS485_WATCH_BITS = _config.rs485.watch_bits
+RS485_NG_OUTPUT_BIT = _config.rs485.ng_output_bit        # output bit pulsed on NG
 
 # Detection threshold config (MA Mode)
 #   "off" — ซ่อน slider ใน Reset Batch dialog (default สำหรับลูกค้า)
 #   "on"  — แสดง slider ให้ MA ปรับ min_defect_area per size ได้
-DETECTION_THRESHOLD_MODE = "on"
+DETECTION_THRESHOLD_MODE = _config.detection.threshold_mode
 
 
 class MainWindow(QMainWindow):

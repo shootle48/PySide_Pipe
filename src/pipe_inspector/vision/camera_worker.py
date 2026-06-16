@@ -30,7 +30,6 @@ logger = logging.getLogger(__name__)
 
 # ── Tunable constants ──────────────────────────────────────────────────────
 CAPTURE_DELAY      = 0.3       # seconds to wait after trigger (pipe settles)
-TIMER_INTERVAL     = 6.0       # seconds between auto-triggers (timer mode)
 STREAM_FPS         = 20        # live view frame rate cap
 
 # ── OK Image Sampling Config ─────────────────────────────────────────────
@@ -94,7 +93,7 @@ class CameraWorker(QThread):
         db,
         camera_index:   int         = 0,
         trigger_mode:   TriggerMode = TriggerMode.MANUAL,
-        timer_interval: float       = TIMER_INTERVAL,
+        timer_interval: float       = 6.0,   # fallback; MainWindow passes the Settings value
         size_classifier=None,   # Optional[SizeClassifier]; None = skip size detection
     ) -> None:
         super().__init__()
