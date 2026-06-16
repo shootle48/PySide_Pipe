@@ -308,7 +308,11 @@ class CameraWorker(QThread):
         )
 
         t0 = time.perf_counter()
-        self._cap = cv2.VideoCapture(self._camera_index)
+        # Windows: DirectShow (CAP_DSHOW) avoids the MSMF "can't grab frame"
+        # errors seen with some / multiple USB cameras. Linux/Jetson keeps the
+        # default backend (V4L2) so production deployment is unaffected.
+        _backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
+        self._cap = cv2.VideoCapture(self._camera_index, _backend)
         if not self._cap.isOpened():
             msg = (
                 f"Cannot open camera index {self._camera_index}. "
