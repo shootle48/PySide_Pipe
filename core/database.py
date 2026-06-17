@@ -323,6 +323,24 @@ class DatabaseManager:
             for row in rows
         ]
 
+    def get_inspections_with_images(self, batch_id: str) -> list[dict]:
+        """ดึง inspection ที่มีรูป (NG) เฉพาะ batch เดียว — สำหรับ Dataset Export แยก batch"""
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT piece_id, batch_id, verdict, timestamp,
+                       detections, image_b64, detected_size
+                FROM   inspections
+                WHERE  batch_id = ? AND image_b64 IS NOT NULL AND image_b64 != ''
+                ORDER  BY timestamp ASC
+                """,
+                (batch_id,),
+            ).fetchall()
+        return [
+            {**dict(row), "detections": self._safe_json_loads(row["detections"])}
+            for row in rows
+        ]
+
     @staticmethod
     def _safe_json_loads(raw: str) -> list:
         try:

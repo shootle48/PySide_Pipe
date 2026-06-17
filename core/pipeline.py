@@ -29,6 +29,8 @@ Result dict shape:
 from __future__ import annotations
 
 import base64
+import datetime
+import shutil
 import logging
 import os
 import sqlite3
@@ -42,7 +44,7 @@ from PySide6.QtCore import QSettings, QThread, Signal
 from core.Detection import Detection
 
 from core.constants import TriggerMode, Verdict, WorkerStatus
-from core.utils import utcnow_iso
+from core.utils import utcnow_iso, iso_to_local_str
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +58,13 @@ TIMER_INTERVAL     = 6.0       # seconds between auto-triggers (timer mode)
 STREAM_FPS         = 20        # live view frame rate cap
 
 # ── OK Image Sampling Config ─────────────────────────────────────────────
-OK_SAMPLE_EVERY_N  = 10        # ทุก N ชิ้น OK ค่อย snap 1 รูป
 MAX_OK_NG_RATIO    = 1.5       # saved_OK / saved_NG ไม่เกินค่านี้ (ป้องกัน storage บวม)
+
+NG_IMAGE_DIR       = "exports/ng"   # เซฟภาพ NG เป็นไฟล์แยก: exports/ng/<วันที่>/NG_<วันเวลา>_<piece>.jpg
+OK_IMAGE_DIR       = "exports/ok"   # เซฟภาพ OK (สุ่ม) เป็นไฟล์: exports/ok/<วันที่>/OK_<วันเวลา>_<piece>.jpg
+OK_FILE_SAMPLE_EVERY_N  = 50   # เซฟภาพ OK ลงไฟล์ทุกๆ N ชิ้น OK (สุ่มเก็บตัวอย่าง)
+IMAGE_KEEP_DAYS         = 60   # ลบโฟลเดอร์ภาพ (NG/OK) ที่เก่ากว่านี้ (cleanup)
+IMG_CLEANUP_INTERVAL_S  = 3600 # throttle cleanup — เดินไฟล์ระบบอย่างมากชั่วโมงละครั้ง
 
 # ── Camera Health Monitor ────────────────────────────────────────────────
 MAX_READ_FAILURES  = 30        # consecutive fails → mark offline (~1-2 วิ)
@@ -427,25 +434,11 @@ class CameraWorker(QThread):
     # ── Image save policy ──────────────────────────────────────────────────
 
     def _should_save_image(self, verdict: str, batch_id: str) -> bool:
-        """ตัดสินใจว่าจะเก็บรูปหรือไม่:
-          NG → เก็บทุกครั้ง
-          OK → เก็บทุก OK_SAMPLE_EVERY_N ชิ้น แต่ต้องไม่ทำให้
-               saved_OK / saved_NG > MAX_OK_NG_RATIO (ถ้าไม่มี NG เลย ก็ไม่เก็บ)
-        """
         if verdict == "NG":
             return True
-        # OK sampling
-        ok_count = self._db.count_inspections_by_verdict(batch_id, "OK") + 1  # +1 = ตัวปัจจุบัน
-        if ok_count % OK_SAMPLE_EVERY_N != 0:
-            return False
         saved_ng = self._db.count_saved_images(batch_id, "NG")
         if saved_ng == 0:
             return False  # ยังไม่มี NG reference — ไม่ sample OK
-        saved_ok = self._db.count_saved_images(batch_id, "OK")
-        if (saved_ok + 1) / saved_ng > MAX_OK_NG_RATIO:
-            logger.info(f"OK sample skipped (ratio cap): ok={saved_ok+1} ng={saved_ng}")
-            return False
-        logger.info(f"OK sampled at #{ok_count} (ok={saved_ok+1} ng={saved_ng})")
         return True
 
     # ── Inspection cycle (broken into three focused methods) ─────────────────
@@ -509,11 +502,69 @@ class CameraWorker(QThread):
                     (time.perf_counter() - t0) * 1000,
                     "yes" if save_image else "no")
 
+        # เซฟภาพเป็นไฟล์แยกในโฟลเดอร์เฉพาะ (เพิ่มจาก DB — DB ยังเก็บไว้ให้ preview ใช้)
+        #   NG → ทุกชิ้น ; OK → สุ่มทุก OK_FILE_SAMPLE_EVERY_N ชิ้น
+        b64 = result.get("image_b64")
+        if b64:
+            if result["verdict"] == "NG":
+                self._save_image_file(b64, timestamp, internal_piece_id, NG_IMAGE_DIR, "NG")
+            else:
+                ok_count = batch_snapshot["total"] - batch_snapshot["ng"]   # OK สะสมใน batch (รวมตัวนี้)
+                if ok_count > 0 and ok_count % OK_FILE_SAMPLE_EVERY_N == 0:
+                    self._save_image_file(b64, timestamp, internal_piece_id, OK_IMAGE_DIR, "OK")
+
+        # cleanup โฟลเดอร์ภาพเก่า (throttle — ไม่เดิน FS ทุกชิ้น)
+        if time.time() - getattr(self, "_last_img_cleanup", 0.0) > IMG_CLEANUP_INTERVAL_S:
+            self._last_img_cleanup = time.time()
+            self._cleanup_image_folders()
+
         return {
             **result,
             "timestamp": timestamp,
             "batch":     batch_snapshot,
         }
+
+    def _save_image_file(self, image_b64: str, timestamp: str, piece_id: str,
+                         base_dir: str, prefix: str) -> None:
+        """เซฟภาพลง <base_dir>/<วันที่>/<prefix>_<วันเวลา>_<piece>.jpg
+        best-effort — เขียนไฟล์ fail (disk เต็ม/สิทธิ์) ต้องไม่ทำให้ inspection cycle ล่ม
+        """
+        try:
+            date_folder = iso_to_local_str(timestamp, fmt="%Y-%m-%d")        # 2026-06-17
+            stamp       = iso_to_local_str(timestamp, fmt="%Y-%m-%d_%H%M%S") # 2026-06-17_210907
+            folder = os.path.join(base_dir, date_folder)
+            os.makedirs(folder, exist_ok=True)
+            path = os.path.join(folder, f"{prefix}_{stamp}_{piece_id}.jpg")
+            with open(path, "wb") as f:
+                f.write(base64.b64decode(image_b64))   # bytes เดียวกับใน DB → ตรงกับ preview
+            logger.info("CameraWorker: saved %s image → %s", prefix, path)
+        except (OSError, ValueError) as exc:
+            logger.warning("CameraWorker: save %s image failed (%s) — ข้ามไป", prefix, exc)
+
+    def _cleanup_image_folders(self) -> None:
+        """ลบโฟลเดอร์ภาพรายวัน (NG/OK) ที่เก่ากว่า IMAGE_KEEP_DAYS — best-effort"""
+        cutoff = datetime.date.today() - datetime.timedelta(days=IMAGE_KEEP_DAYS)
+        removed = 0
+        for base in (NG_IMAGE_DIR, OK_IMAGE_DIR):
+            if not os.path.isdir(base):
+                continue
+            for name in os.listdir(base):
+                folder = os.path.join(base, name)
+                if not os.path.isdir(folder):
+                    continue
+                try:
+                    day = datetime.datetime.strptime(name, "%Y-%m-%d").date()
+                except ValueError:
+                    continue   # ชื่อโฟลเดอร์ไม่ใช่วันที่ → ข้าม (ไม่ลบมั่ว)
+                if day < cutoff:
+                    try:
+                        shutil.rmtree(folder)
+                        removed += 1
+                    except OSError as exc:
+                        logger.warning("image cleanup: ลบ %s ไม่ได้ (%s)", folder, exc)
+        if removed:
+            logger.info("CameraWorker: image cleanup ลบ %d โฟลเดอร์เก่า (> %d วัน)",
+                        removed, IMAGE_KEEP_DAYS)
 
     def _run_inspection_cycle(self) -> None:
         """Orchestrate one full stop-and-go inspection cycle.

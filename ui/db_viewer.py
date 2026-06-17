@@ -809,12 +809,23 @@ class DbViewerDialog(QDialog):
         # ดึงตาม batch + date filter ที่กำลังแสดงอยู่ (ให้ตรงกับหน้า DB Viewer) — ทั้งหมด ไม่ตัด 500
         df, dt = self._date_from, self._date_to
         total = self._db.count_inspections(self._current_batch, df, dt)
-        rows = self._db.get_inspections_page(self._current_batch, df, dt, limit=max(total, 1), offset=0)
+        ng    = self._db.count_inspections(self._current_batch, df, dt, verdict="NG")
+        ok    = total - ng
+        rate  = self._batch_ng_rate_str(total, ng)   # Quality Rate (OK ratio) — ตัวเดียวกับในจอ
+        rows  = self._db.get_inspections_page(self._current_batch, df, dt, limit=max(total, 1), offset=0)
 
         try:
             with open(path, "w", newline="", encoding="utf-8-sig") as f:  # utf-8-sig = BOM for Excel
                 writer = csv.writer(f)
-                # คอลัมน์ตรงกับตาราง DB Viewer: No. | Verdict | Defects | Timestamp
+                # ── สรุปยอดรวม (ตรงกับ chip OK/NG ในจอ) ──────────────────
+                writer.writerow(["สรุป / Summary"])
+                writer.writerow(["Batch", self._current_batch])
+                writer.writerow(["Total OK", ok])
+                writer.writerow(["Total NG", ng])
+                writer.writerow(["รวม / Total", total])
+                writer.writerow(["Quality Rate", rate])
+                writer.writerow([])   # บรรทัดว่างคั่นก่อนตารางรายชิ้น
+                # ── ตารางรายชิ้น (คอลัมน์ตรงกับ DB Viewer) ──
                 writer.writerow(["No.", "Verdict", "Defects", "Timestamp"])
                 for i, r in enumerate(rows):
                     dets = ", ".join(d.get("label", "") for d in r.get("detections", []))
@@ -840,17 +851,22 @@ class DbViewerDialog(QDialog):
           └── annotations.csv  (piece_id, batch_id, verdict,
                                detected_size, label, total, ng, timestamp)
         """
+        if self._current_batch is None:
+            QMessageBox.warning(self, "Export Dataset", "เลือก batch ก่อน")
+            return
+
         target_dir = QFileDialog.getExistingDirectory(
             self, "เลือกโฟลเดอร์ปลายทางสำหรับ Dataset"
         )
         if not target_dir:
             return
 
-        rows = self._db.get_all_inspections_with_images()
+        # เฉพาะ batch ที่เลือกอยู่ (ไม่ปนข้าม batch)
+        rows = self._db.get_inspections_with_images(self._current_batch)
         if not rows:
             QMessageBox.warning(
                 self, "Export Dataset",
-                "ไม่พบรูปภาพใน DB — ยังไม่มี NG inspection ที่บันทึกรูปไว้"
+                f"ไม่พบรูปภาพใน batch {self._current_batch} — ยังไม่มี NG ที่บันทึกรูปไว้"
             )
             return
 
@@ -860,7 +876,7 @@ class DbViewerDialog(QDialog):
             for b in self._db.get_all_batches()
         }
 
-        ts_folder = datetime.now().strftime("dataset_export_%Y%m%d_%H%M%S")
+        ts_folder = datetime.now().strftime(f"dataset_{self._current_batch}_%Y%m%d_%H%M%S")
         out_dir   = Path(target_dir) / ts_folder
         ng_dir    = out_dir / "NG"
         try:
