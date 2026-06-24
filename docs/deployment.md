@@ -74,6 +74,28 @@ python3 main.py
 
 ---
 
+## Operator Launcher Icon (กดเปิดเองหน้างาน)
+
+ไอคอนกดเปิดบนหน้าจอ Jetson — ให้ **operator เปิดโปรแกรมเองได้เมื่อแอปปิด** (เช่นหลังไฟดับ
+หรือเหตุไม่คาดคิด) โดยไม่ต้องใช้ terminal.
+
+ไฟล์ในโปรเจกต์: `run.sh` (launcher) + `install_launcher_linux.sh` (ตัวติดตั้ง) + `assets/icon.svg`
+
+```bash
+cd ~/Praram9/PySide
+sed -i 's/\r$//' run.sh install_launcher_linux.sh   # กัน CRLF ถ้า copy ข้ามจาก Windows
+chmod +x run.sh install_launcher_linux.sh
+bash install_launcher_linux.sh                       # ติดตั้งครั้งเดียว
+```
+
+→ ได้ไอคอน **"Pipe Inspector"** บน Desktop + เมนูแอป ; ถ้า Desktop ขึ้น "Allow Launching"
+→ คลิกขวาไอคอน เลือก **Allow Launching**
+
+- `run.sh` ตั้ง `DISPLAY=:0` ให้เอง แล้วรัน `python3 main.py` (system python3 + opencv จาก apt)
+- **ใช้คู่กับ Autostart ได้**: Autostart เปิดให้ตอน boot, ส่วนไอคอนนี้ไว้ให้ operator กดเปิดซ้ำถ้าแอปปิดกลางทาง
+
+---
+
 ## Autostart (XDG — แนะนำ)
 
 เปิดโปรแกรมอัตโนมัติหลัง login บน Jetson desktop

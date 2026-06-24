@@ -1,0 +1,2 @@
+# บังคับ shell script เป็น LF เสมอ — รันบน Jetson/Linux ได้แม้แก้/commit จาก Windows
+*.sh text eol=lf

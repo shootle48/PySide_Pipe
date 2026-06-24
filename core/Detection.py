@@ -27,11 +27,11 @@ def _ms(t0: float) -> float:
 SIZE_MAPPING = {
     "L": {
         "outer_circle": dict(dp=1, minDist=3000, param1=50, param2=15,
-                             minRadius=180, maxRadius=185),
+                             minRadius=177, maxRadius=184),
         "mid_circle":   dict(dp=1, minDist=3000, param1=50, param2=15,
                              minRadius=135, maxRadius=140),
         "inner_circle": dict(dp=1, minDist=200,  param1=50, param2=15,
-                             minRadius=95,  maxRadius=100),
+                             minRadius=90,  maxRadius=100),
         "outer_shrink":    0.90,
         "inner_shrink":    0.90,
         "thresh_block":    301,
@@ -63,7 +63,7 @@ SIZE_MAPPING = {
         "mid_circle":   dict(dp=1, minDist=3000, param1=50, param2=15,
                              minRadius=55,  maxRadius=60),
         "inner_circle": dict(dp=1, minDist=3000, param1=75, param2=15,
-                             minRadius=35,  maxRadius=40),
+                             minRadius=33,  maxRadius=37),
         "outer_shrink":    0.90,
         "inner_shrink":    0.90,
         "thresh_block":    301,
@@ -204,7 +204,7 @@ class Detection:
     # ── HoughCircles (CUDA → CPU fallback) ────────────────────────────────
     def _hough_circles(self, img_gray: np.ndarray, circle_key: str) -> "np.ndarray | None":
         cfg_circle = self.cfg[f"{circle_key}_circle"]
-
+        logger.info("GPU=%s",_USE_CUDA)
         if _USE_CUDA and self.size in _CUDA_DETECTORS:
             try:
                 detector = _CUDA_DETECTORS[self.size][circle_key]
@@ -288,7 +288,7 @@ class Detection:
 
         # Global threshold — ใช้ทั้ง outer และ inner
         # ยิ่ง light_pct สูง → thresh_val สูง → จับ defect สีสว่างขึ้นได้ด้วย
-        outer_thresh_val = int(255 * (0.5422 * (self.outer_light_pct/100)))
+        outer_thresh_val = int(255 * (0.2 * (self.outer_light_pct/100)))
         inner_thresh_val = int(255 * (0.6522 * (self.inner_light_pct/100)))
 
         self.brightness_thresh_outer = outer_thresh_val
@@ -393,7 +393,7 @@ class Detection:
         t = time.perf_counter()
 
         pipe_land_mask = np.zeros_like(gray)
-        cv2.circle(pipe_land_mask, (ax, ay), r_outer_shrink, 255, -1)
+        cv2.circle(pipe_land_mask, (ax, ay), r_outer, 255, -1)
         cv2.circle(pipe_land_mask, (mx, my), r_mid, 0, -1)           # เจาะรูตรงกลางออก
         masked_pipe_land      = cv2.bitwise_and(gray, pipe_land_mask)
         self.masked_pipe_land = masked_pipe_land
