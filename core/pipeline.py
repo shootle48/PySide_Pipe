@@ -69,6 +69,7 @@ IMG_CLEANUP_INTERVAL_S  = 3600 # throttle cleanup — เดินไฟล์�
 # ── Camera Health Monitor ────────────────────────────────────────────────
 MAX_READ_FAILURES  = 30        # consecutive fails → mark offline (~1-2 วิ)
 READ_FAIL_COOLDOWN = 0.05      # sleep กัน tight-spin 100% CPU ตอน read fail
+REOPEN_INTERVAL_S  = 2.0       # ตอน offline → ลอง re-open กล้องทุกๆ กี่วินาที (USB หลุด/เสียบใหม่)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -306,6 +307,31 @@ class CameraWorker(QThread):
         self._stop_event.set()
         self._trigger_event.set()   # unblock any waiting trigger
 
+    # ── Camera open / re-open ───────────────────────────────────────────────
+
+    def _open_camera(self) -> bool:
+        """เปิด (หรือเปิดใหม่) VideoCapture ที่ index เดิม — คืน True ถ้าสำเร็จ.
+
+        ปิด handle เก่าก่อนเสมอ — ใช้สำหรับ re-open หลังกล้อง USB หลุด เพราะ cv2
+        ไม่ฟื้น handle ที่ device หายไปแล้ว (อ่านต่อได้ False ตลอด) ต้องสร้างตัวใหม่.
+        เรียกจาก reader thread เท่านั้น (thread เดียวที่แตะ self._cap หลัง startup).
+        """
+        if self._cap is not None:
+            try:
+                self._cap.release()
+            except Exception:   # noqa: BLE001 — release handle เก่าพังไม่ควรล้ม loop
+                pass
+            self._cap = None
+
+        backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
+        cap = cv2.VideoCapture(self._camera_index, backend)
+        if not cap.isOpened():
+            cap.release()
+            return False
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        self._cap = cap
+        return True
+
     # ── QThread.run() ──────────────────────────────────────────────────────
 
     def run(self) -> None:
@@ -385,9 +411,11 @@ class CameraWorker(QThread):
         """
         fail_count = 0
         is_offline = False
+        last_reopen = 0.0
 
         while not self._stop_event.is_set():
-            ret, frame = self._cap.read()
+            cap = self._cap
+            ret, frame = (cap.read() if cap is not None else (False, None))
 
             if ret and frame is not None:
                 self._frame_buffer.update(frame)
@@ -400,11 +428,23 @@ class CameraWorker(QThread):
                 fail_count += 1
                 if fail_count == MAX_READ_FAILURES and not is_offline:
                     logger.warning(
-                        f"CameraWorker: camera offline 🔴 "
-                        f"(after {fail_count} consecutive failed reads)"
+                        "CameraWorker: camera offline 🔴 (after %d consecutive failed reads)",
+                        fail_count,
                     )
                     self.camera_health_changed.emit(False)
                     is_offline = True
+
+                # ตอน offline → re-open กล้องเป็นรอบๆ (cv2 ไม่ฟื้น handle ที่ device หลุด)
+                # → USB กล้องสะดุด/ถอด-เสียบใหม่หน้างาน กลับมาเองโดยไม่ต้อง restart แอป
+                if is_offline and (time.monotonic() - last_reopen) >= REOPEN_INTERVAL_S:
+                    last_reopen = time.monotonic()
+                    logger.info("CameraWorker: re-opening camera (index %d)...", self._camera_index)
+                    if self._open_camera():
+                        logger.info("CameraWorker: camera re-opened — รอ frame กลับมา")
+                        fail_count = 0   # ให้รอบหน้าลองอ่านจาก handle ใหม่
+                    else:
+                        logger.warning("CameraWorker: re-open ยังไม่ได้ — จะลองใหม่ใน %.0fs", REOPEN_INTERVAL_S)
+
                 # wait() returns True when stop is signalled → exits faster than sleep()
                 self._stop_event.wait(timeout=READ_FAIL_COOLDOWN)
 

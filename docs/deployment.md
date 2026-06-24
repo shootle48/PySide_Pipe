@@ -176,9 +176,10 @@ for i in range(5):
 
 ## P0 Hardening
 
-### 1. Single-Instance Lock
+### 1. Single-Instance Lock  ✅ ทำแล้ว (main.py)
 
-ป้องกันรัน 2 instance พร้อมกัน (seq ชน, DB contention)
+ป้องกันรัน 2 instance พร้อมกัน (seq ชน, DB contention) — ใส่ `QLockFile` ใน `main.py` แล้ว
+(lock ที่ tempdir + เช็ค PID กัน crash-leftover → restart ผ่านไอคอนได้เสมอ). snippet อ้างอิง:
 
 ```python
 # เพิ่มใน main.py ก่อน MainWindow()
@@ -223,9 +224,10 @@ sudo systemctl start chrony
 chronyc tracking
 ```
 
-### 5. Camera Health Check
+### 5. Camera Health Check  ✅ ทำแล้ว (core/pipeline.py)
 
-เพิ่มใน `core/pipeline.py`:
+`_read_frames_loop` นับ read failure → offline แล้ว **re-open กล้องทุก `REOPEN_INTERVAL_S`**
+(USB หลุด/เสียบใหม่ → ฟื้นเองไม่ต้อง restart). โครงเดิมที่อ้างอิง:
 
 ```python
 MAX_READ_FAILURES = 30   # มีอยู่แล้ว

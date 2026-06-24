@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import logging
 import sys
+import tempfile
 # import PySide6
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from PySide6.QtCore    import QLockFile
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ui.main_window import MainWindow
@@ -104,6 +106,20 @@ def main() -> None:
     #    (ทำให้ค่า threshold/camera/calibration save ไม่ติด = "ใช้ default อย่างเดียว")
     app.setOrganizationName("SmartSense")
     app.setApplicationName("Pipe Inspector")
+
+    # ── Single-instance lock ────────────────────────────────────────────────
+    # กันเปิดซ้อน 2 instance (operator ดับเบิลคลิกไอคอน / autostart เปิดแล้วกดไอคอนซ้ำ)
+    # → กันแย่งกล้อง + เขียน DB/counter ชนกัน (piece_id = COUNT+1 จาก 2 proc จะชน)
+    # QLockFile เช็ค PID ให้เอง: ถ้า instance เก่า crash ค้าง lock → tryLock รู้ว่า
+    # process ตายแล้วและยึด lock ต่อได้ → operator restart ผ่านไอคอนได้เสมอ ไม่ค้างถาวร
+    instance_lock = QLockFile(str(Path(tempfile.gettempdir()) / "pipe-inspector.lock"))
+    if not instance_lock.tryLock(100):
+        logger.warning("Another instance is already running — exiting.")
+        QMessageBox.warning(
+            None, "Pipe Inspector",
+            "โปรแกรมกำลังเปิดอยู่แล้ว — ไม่เปิดซ้ำ\n(กันกล้อง / ฐานข้อมูลชนกัน)",
+        )
+        sys.exit(0)
 
     try:
         t0 = time.perf_counter()
