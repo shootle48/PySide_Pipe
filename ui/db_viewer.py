@@ -28,11 +28,11 @@ from pathlib import Path
 
 from datetime import datetime, time, timedelta, timezone
 
-from PySide6.QtCore    import QDate, QLocale, Qt, QThread, Signal, Slot
+from PySide6.QtCore    import QDate, QLocale, Qt, QThread, QUrl, Signal, Slot
 from PySide6.QtGui     import QColor, QFont, QImage, QPixmap
 from PySide6.QtWidgets import (
-    QDateEdit, QDialog, QFileDialog, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QMessageBox, QPushButton, QSplitter,
+    QApplication, QDateEdit, QDialog, QFileDialog, QHBoxLayout, QLabel,
+    QListWidget, QListWidgetItem, QMessageBox, QPushButton, QSplitter,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QFrame,
 )
 
@@ -53,6 +53,78 @@ QCalendarWidget QWidget#qt_calendar_navigationbar { min-height: 44px; }
 QCalendarWidget QToolButton { min-height: 40px; min-width: 44px; font-size: 16px; icon-size: 28px; }
 QCalendarWidget QSpinBox { font-size: 16px; min-height: 32px; }
 """
+
+# QSS ขยาย file dialog (Export CSV/Dataset) ให้จิ้มง่ายบน touchscreen
+# — ใช้กับ QFileDialog แบบ DontUseNativeDialog เท่านั้น (native dialog สไตล์ไม่เข้า)
+_FILE_DIALOG_QSS = """
+QFileDialog { font-size: 17px; }
+QFileDialog QListView, QFileDialog QTreeView { font-size: 19px; }
+QFileDialog QListView::item, QFileDialog QTreeView::item { min-height: 56px; }
+QFileDialog QPushButton {
+    min-height: 60px; min-width: 150px;
+    font-size: 18px; font-weight: bold;
+    border: 2px solid #1565c0; border-radius: 8px;
+    background: #ffffff; color: #1565c0; padding: 4px 20px;
+}
+QFileDialog QPushButton:hover   { background: #e3f2fd; }
+QFileDialog QPushButton:pressed { background: #bbdefb; }
+QFileDialog QLineEdit  { min-height: 52px; font-size: 18px; }
+QFileDialog QComboBox  { min-height: 52px; font-size: 16px; }
+QFileDialog QToolButton { min-width: 56px; min-height: 52px; }
+QFileDialog QHeaderView::section { min-height: 36px; font-size: 14px; }
+QFileDialog QScrollBar:vertical   { width: 34px; }
+QFileDialog QScrollBar:horizontal { height: 34px; }
+"""
+
+
+def _mounted_usb_drives(media_root: Path = Path("/media")) -> list[Path]:
+    """ไดรฟ์ USB ที่ mount แล้วใต้ /media/<user>/<label> (Ubuntu/Jetson auto-mount ที่นี่).
+
+    เช่น เสียบแฟลชไดรฟ์ KINGSTON → คืน [Path('/media/jetson/KINGSTON')].
+    best-effort: อ่านไม่ได้ (permission) ก็ข้าม ไม่ทำ dialog พัง.
+    """
+    drives: list[Path] = []
+    try:
+        for user_dir in media_root.iterdir():
+            if not user_dir.is_dir():
+                continue
+            try:
+                drives += [d for d in user_dir.iterdir() if d.is_dir()]
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return drives
+
+
+def _make_touch_file_dialog(dlg: QFileDialog) -> None:
+    """ปรับ QFileDialog ให้เหมาะจอสัมผัสหน้างาน: หน้าต่างใหญ่ + แถว/ปุ่ม/scrollbar ใหญ่.
+
+    ต้องใช้ DontUseNativeDialog — dialog ของ OS คุมขนาด/สไตล์ไม่ได้.
+    sidebar: Home / Desktop / /media + **ไดรฟ์ USB ที่ mount แล้วรายตัว** (จิ้มทีเดียวถึง).
+    หมายเหตุ: sidebar สร้างตอนเปิด dialog — เสียบ USB ก่อนกด Export.
+    """
+    dlg.setOption(QFileDialog.DontUseNativeDialog, True)
+    dlg.setViewMode(QFileDialog.List)          # แถวใหญ่ จิ้มง่ายกว่า Detail
+    # ขยายเกือบเต็มจอ (95% x 92% ของพื้นที่จอ) — ปรับตามจอจริงอัตโนมัติ
+    screen = QApplication.primaryScreen()
+    if screen is not None:
+        g = screen.availableGeometry()
+        dlg.resize(int(g.width() * 0.95), int(g.height() * 0.92))
+    else:
+        dlg.resize(980, 640)                   # fallback ถ้าอ่านขนาดจอไม่ได้
+    dlg.setStyleSheet(_FILE_DIALOG_QSS)
+
+    urls = [QUrl.fromLocalFile(str(Path.home()))]
+    desktop = Path.home() / "Desktop"
+    if desktop.is_dir():
+        urls.append(QUrl.fromLocalFile(str(desktop)))
+    media = Path("/media")                     # USB drive บน Linux/Jetson
+    if media.is_dir():
+        urls.append(QUrl.fromLocalFile(str(media)))
+        # ไดรฟ์ที่เสียบอยู่ → ทางลัดตรงในsidebar เช่น /media/jetson/KINGSTON
+        urls += [QUrl.fromLocalFile(str(d)) for d in _mounted_usb_drives(media)]
+    dlg.setSidebarUrls(urls)
 
 # QSS pill verdict — ใส่ตรงบน QLabel เอง (inline) ไม่พึ่ง cascade จาก dialog
 _PILL_QSS_OK = (
@@ -640,7 +712,8 @@ class DbViewerDialog(QDialog):
 
         dlg = QDialog(self)
         dlg.setWindowTitle("NG Image — แตะรูปเพื่อปิด หรือกด Esc")
-        dlg.showMaximized()
+        # หมายเหตุ: ห้าม showMaximized() ตรงนี้ — exec() จะ show ซ้ำแล้ว WM รีเซ็ต
+        # ตำแหน่ง/ขนาด (อาการหน้าต่างหลุดไปขวาล่าง) → ตั้ง geometry เต็มจอก่อน exec แทน
 
         layout = QVBoxLayout(dlg)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -668,9 +741,10 @@ class DbViewerDialog(QDialog):
         # Click anywhere on the image closes the dialog
         img_label.mousePressEvent = lambda ev: dlg.close()
         screen = dlg.screen().availableGeometry()
+        # หักที่ hint bar (~37px) + ปุ่ม CLOSE (72px) — รูปจะได้ไม่โดนตัดขอบล่าง
         img_label.setPixmap(
             self._current_pixmap.scaled(
-                screen.width(), screen.height(),
+                screen.width(), max(100, screen.height() - 120),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation,
             )
@@ -697,6 +771,8 @@ class DbViewerDialog(QDialog):
         close_btn.clicked.connect(dlg.close)
         layout.addWidget(close_btn)
 
+        # เต็มจอ + ตำแหน่งตรงพิกัดจอจริง (0,0 ของจอ) — deterministic, WM ย้ายไม่ได้
+        dlg.setGeometry(dlg.screen().availableGeometry())
         dlg.exec()
 
     @Slot(object, object)
@@ -800,14 +876,16 @@ class DbViewerDialog(QDialog):
             QMessageBox.warning(self, "Export", "Select a batch first.")
             return
 
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export CSV",
-            f"{self._current_batch}_inspections.csv",
-            "CSV Files (*.csv)",
-        )
-        if not path:
+        # dialog แบบ instance (ไม่ใช่ static/native) → ขยายหน้าต่าง/ปุ่มให้ touch ได้
+        dlg = QFileDialog(self, "Export CSV")
+        dlg.setAcceptMode(QFileDialog.AcceptSave)
+        dlg.setNameFilter("CSV Files (*.csv)")
+        dlg.setDefaultSuffix("csv")            # ไม่พิมพ์ .csv ก็เติมให้
+        dlg.selectFile(f"{self._current_batch}_inspections.csv")
+        _make_touch_file_dialog(dlg)
+        if dlg.exec() != QDialog.Accepted or not dlg.selectedFiles():
             return
+        path = dlg.selectedFiles()[0]
 
         # ดึงตาม batch + date filter ที่กำลังแสดงอยู่ (ให้ตรงกับหน้า DB Viewer) — ทั้งหมด ไม่ตัด 500
         df, dt = self._date_from, self._date_to
@@ -856,11 +934,14 @@ class DbViewerDialog(QDialog):
             QMessageBox.warning(self, "Export Dataset", "เลือก batch ก่อน")
             return
 
-        target_dir = QFileDialog.getExistingDirectory(
-            self, "เลือกโฟลเดอร์ปลายทางสำหรับ Dataset"
-        )
-        if not target_dir:
+        # dialog แบบ instance (ไม่ใช่ static/native) → ขยายหน้าต่าง/ปุ่มให้ touch ได้
+        dlg = QFileDialog(self, "เลือกโฟลเดอร์ปลายทางสำหรับ Dataset")
+        dlg.setFileMode(QFileDialog.Directory)
+        dlg.setOption(QFileDialog.ShowDirsOnly, True)
+        _make_touch_file_dialog(dlg)
+        if dlg.exec() != QDialog.Accepted or not dlg.selectedFiles():
             return
+        target_dir = dlg.selectedFiles()[0]
 
         # เฉพาะ batch ที่เลือกอยู่ (ไม่ปนข้าม batch)
         rows = self._db.get_inspections_with_images(self._current_batch)
