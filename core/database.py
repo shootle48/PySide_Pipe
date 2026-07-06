@@ -106,10 +106,17 @@ class DatabaseManager:
     # ── Batch operations ───────────────────────────────────────────────────
 
     def get_next_piece_number(self) -> int:
-        """คืน piece number ถัดไป = จำนวน inspection ทั้งหมดใน DB + 1"""
+        """คืน piece number ถัดไป = MAX(piece_id) + 1.
+
+        ใช้ MAX ไม่ใช่ COUNT — กัน UNIQUE collision เมื่อมีการลบ record:
+        COUNT+1 เดิม ถ้าลบ record แล้ว count ลด → คืนเลขที่ชน piece_id เดิมที่ยังอยู่.
+        piece_id เก็บเป็น TEXT ของเลข → CAST เป็น int ก่อนหา MAX (ตารางว่าง → 0+1=1).
+        """
         with self._lock:
-            row = self._conn.execute("SELECT COUNT(*) FROM inspections").fetchone()
-        return (row[0] or 0) + 1
+            row = self._conn.execute(
+                "SELECT MAX(CAST(piece_id AS INTEGER)) FROM inspections"
+            ).fetchone()
+        return int(row[0] or 0) + 1
 
     def batch_exists(self, batch_id: str) -> bool:
         """ตรวจว่า batch_id ยังมีอยู่ใน DB (ไม่ถูกลบ)"""

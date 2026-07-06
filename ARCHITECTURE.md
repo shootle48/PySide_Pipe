@@ -68,8 +68,8 @@ CameraWorker loop               (worker thread)
     │
     ├─ piece_id = f"{batch_id}-{seq:04d}"
     │
-    ├─ if _should_save_image(verdict, batch_id):
-    │      image_b64 = base64(jpeg)
+    ├─ if _should_save_image(verdict, ok_count):   # NG=ทุกใบ ; OK=1 ใบทุก N ใบ
+    │      image_b64 = base64(jpeg)                # (ใช้ flag เดียวกับไฟล์แยก)
     │   else:
     │      image_b64 = None
     │
@@ -170,7 +170,7 @@ batch_state.reset(expected_total)
 | **Batch ใหญ่มาก (>10k pieces)** | `get_max_piece_seq` query ช้าลง | index บน `piece_id` (มีอยู่แล้ว) — ปัจจุบัน OK |
 | **DB corruption** | SQLite ไฟล์เสีย → เปิดไม่ได้ | WAL ช่วยลดความเสี่ยง + **P0**: nightly backup |
 | **Lock contention** | DbViewer query นานขณะ worker เขียน | WAL allow concurrent read; query UI ใช้ LIMIT |
-| **OK sampling stuck** | ถ้า NG = 0 → ไม่เคย save OK เลย (ratio cap) | by design — รอจนมี NG ก่อนค่อยเก็บ sample |
+| **OK image บวม** | เดิม: พอมี NG 1 ใบ → เก็บ OK ทุกใบ (DB โต) | **แก้แล้ว**: DB+ไฟล์ใช้ policy เดียว — OK เก็บ 1 ใบทุก `OK_FILE_SAMPLE_EVERY_N` ใบ |
 
 ### 🟢 LOW severity
 

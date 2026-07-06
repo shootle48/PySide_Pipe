@@ -43,8 +43,7 @@ CameraWorker           ← QThread สำหรับ capture + inspect loop
 MIN_DEFECT_AREA    = 50     # px² — contour เล็กกว่านี้ถือว่าไม่ใช่ defect
 INNER_RADIUS_RATIO = 0.5    # fraction ของ pipe radius ที่ inspect
 JPEG_QUALITY       = 85
-OK_SAMPLE_EVERY_N  = 50     # เก็บรูป OK ทุก N ชิ้น
-MAX_OK_NG_RATIO    = 1.5    # cap ไม่ให้ OK มากกว่า NG เกิน 1.5x
+OK_FILE_SAMPLE_EVERY_N = 50 # เก็บรูป OK (ทั้ง DB+ไฟล์) 1 ใบทุก N ชิ้น OK ; NG เก็บทุกใบ
 MAX_READ_FAILURES  = 30     # consecutive camera read fail → offline
 ```
 

@@ -96,7 +96,10 @@ class DbViewerDialog(QDialog):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        self.showFullScreen()
+        # กันเรียกซ้ำ → ตัด recursion (showFullScreen ใน showEvent ทำ showEvent ยิงซ้ำ →
+        # crash/force-quit บน Qt ของ Jetson). main window ไม่เจอเพราะเรียกจากข้างนอก main.py
+        if not self.isFullScreen():
+            self.showFullScreen()
 
     # ══════════════════════════════════════════════════════════════════════
     # UI construction
@@ -841,15 +844,13 @@ class DbViewerDialog(QDialog):
 
     @Slot()
     def _export_dataset(self) -> None:
-        """Export NG images + annotations เป็น dataset พร้อม train model.
+        """Export NG images เป็น dataset พร้อม train model — **รูปอย่างเดียว (ไม่เขียน annotations.csv)**.
 
         Structure:
-          dataset_export_YYYYMMDD_HHMMSS/
-          ├── NG/
-          │   ├── BATCH-XXXXXX-0001.jpg
-          │   └── ...
-          └── annotations.csv  (piece_id, batch_id, verdict,
-                               detected_size, label, total, ng, timestamp)
+          dataset_<batch>_YYYYMMDD_HHMMSS/
+          └── NG/
+              ├── <piece_id>.jpg
+              └── ...
         """
         if self._current_batch is None:
             QMessageBox.warning(self, "Export Dataset", "เลือก batch ก่อน")
@@ -870,12 +871,6 @@ class DbViewerDialog(QDialog):
             )
             return
 
-        # สร้าง lookup: batch_id → (total, ng)
-        batch_counters = {
-            b["id"]: (b["total"], b["ng"])
-            for b in self._db.get_all_batches()
-        }
-
         ts_folder = datetime.now().strftime(f"dataset_{self._current_batch}_%Y%m%d_%H%M%S")
         out_dir   = Path(target_dir) / ts_folder
         ng_dir    = out_dir / "NG"
@@ -887,7 +882,6 @@ class DbViewerDialog(QDialog):
 
         saved_images = 0
         failed       = 0
-        csv_rows     = []
 
         for r in rows:
             piece_id = r["piece_id"]
@@ -898,37 +892,10 @@ class DbViewerDialog(QDialog):
             except (binascii.Error, OSError) as exc:
                 logger.error(f"Failed to save {piece_id}: {exc}")
                 failed += 1
-                continue
-
-            # Annotations — 1 row per inspection (รวม label หลายตัวด้วย comma)
-            dets   = r.get("detections", [])
-            labels = ", ".join(d.get("label", "unknown") for d in dets) if dets else ""
-            total, ng = batch_counters.get(r["batch_id"], (0, 0))
-            csv_rows.append([
-                piece_id,
-                r["batch_id"],
-                r["verdict"],
-                r.get("detected_size", "") or "",
-                labels, total, ng, r["timestamp"],
-            ])
-
-        # Write annotations.csv
-        try:
-            with open(out_dir / "annotations.csv", "w", newline="", encoding="utf-8-sig") as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    "piece_id", "batch_id", "verdict", "detected_size",
-                    "label", "total", "ng", "timestamp",
-                ])
-                writer.writerows(csv_rows)
-        except (OSError, csv.Error) as exc:
-            QMessageBox.critical(self, "Export Failed", f"เขียน annotations.csv ไม่สำเร็จ:\n{exc}")
-            return
 
         msg = (
             f"Saved to:\n{out_dir}\n\n"
             f"Images saved : {saved_images}\n"
-            f"Annotations  : {len(csv_rows)} rows\n"
         )
         if failed:
             msg += f"Failed       : {failed} images\n"

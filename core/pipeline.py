@@ -58,11 +58,11 @@ TIMER_INTERVAL     = 6.0       # seconds between auto-triggers (timer mode)
 STREAM_FPS         = 20        # live view frame rate cap
 
 # ── OK Image Sampling Config ─────────────────────────────────────────────
-MAX_OK_NG_RATIO    = 1.5       # saved_OK / saved_NG ไม่เกินค่านี้ (ป้องกัน storage บวม)
-
+# นโยบายเก็บภาพ (ใช้ตัวเดียวกันทั้ง DB image_b64 และไฟล์แยก — ดู _should_save_image):
+#   NG → เก็บทุกใบ ; OK → เก็บตัวอย่าง 1 ใบทุก OK_FILE_SAMPLE_EVERY_N ใบ (ไม่เก็บ OK ทั้งหมด)
 NG_IMAGE_DIR       = "exports/ng"   # เซฟภาพ NG เป็นไฟล์แยก: exports/ng/<วันที่>/NG_<วันเวลา>_<piece>.jpg
 OK_IMAGE_DIR       = "exports/ok"   # เซฟภาพ OK (สุ่ม) เป็นไฟล์: exports/ok/<วันที่>/OK_<วันเวลา>_<piece>.jpg
-OK_FILE_SAMPLE_EVERY_N  = 50   # เซฟภาพ OK ลงไฟล์ทุกๆ N ชิ้น OK (สุ่มเก็บตัวอย่าง)
+OK_FILE_SAMPLE_EVERY_N  = 50   # เก็บภาพ OK (ทั้ง DB+ไฟล์) 1 ใบทุกๆ N ชิ้น OK (สุ่มเก็บตัวอย่าง)
 IMAGE_KEEP_DAYS         = 60   # ลบโฟลเดอร์ภาพ (NG/OK) ที่เก่ากว่านี้ (cleanup)
 IMG_CLEANUP_INTERVAL_S  = 3600 # throttle cleanup — เดินไฟล์ระบบอย่างมากชั่วโมงละครั้ง
 
@@ -293,7 +293,19 @@ class CameraWorker(QThread):
             return
 
         self._apply_size_check(result, frame.shape)
-        payload = self._persist_result(result)
+        try:
+            payload = self._persist_result(result)
+        except sqlite3.IntegrityError:
+            logger.error(
+                "CameraWorker: batch '%s' ไม่มีใน DB (ถูกลบ) — กรุณา Reset Batch",
+                self._batch_state.get_state()["id"],
+            )
+            self.error_occurred.emit(
+                "Batch ปัจจุบันถูกลบออกจาก Database\n\n"
+                "กรุณากด 'Reset Batch' เพื่อสร้าง Batch ใหม่ก่อนตรวจต่อ"
+            )
+            self.status_changed.emit(WorkerStatus.IDLE)
+            return
         logger.info(
             "CameraWorker: file done | verdict=%s | detections=%d",
             result["verdict"], len(result["detections"]),
@@ -473,13 +485,18 @@ class CameraWorker(QThread):
 
     # ── Image save policy ──────────────────────────────────────────────────
 
-    def _should_save_image(self, verdict: str, batch_id: str) -> bool:
+    def _should_save_image(self, verdict: str, ok_count: int) -> bool:
+        """นโยบายเก็บภาพ — ใช้ตัวเดียวกันทั้ง DB และไฟล์ (ให้ policy ตรงกัน):
+
+          • NG → เก็บทุกใบ (ต้องใช้ review/หลักฐาน)
+          • OK → เก็บเป็น "ตัวอย่าง" แค่ 1 ใบทุก OK_FILE_SAMPLE_EVERY_N ใบเท่านั้น
+                 (ไม่เก็บ OK ทั้งหมด — กัน DB/ดิสก์บวม)
+
+        ok_count = จำนวน OK สะสมใน batch นี้ (รวมใบปัจจุบัน).
+        """
         if verdict == "NG":
             return True
-        saved_ng = self._db.count_saved_images(batch_id, "NG")
-        if saved_ng == 0:
-            return False  # ยังไม่มี NG reference — ไม่ sample OK
-        return True
+        return ok_count > 0 and ok_count % OK_FILE_SAMPLE_EVERY_N == 0
 
     # ── Inspection cycle (broken into three focused methods) ─────────────────
 
@@ -526,7 +543,11 @@ class CameraWorker(QThread):
         timestamp         = utcnow_iso()
         internal_piece_id = str(self._db.get_next_piece_number())
 
-        save_image = self._should_save_image(result["verdict"], batch_snapshot["id"])
+        # ตัดสินครั้งเดียว → ใช้ทั้ง DB (image_b64) และไฟล์แยก ให้ policy ตรงกัน
+        #   NG → เก็บทุกใบ ; OK → เก็บตัวอย่าง 1 ใบทุก OK_FILE_SAMPLE_EVERY_N ใบ
+        ok_count   = batch_snapshot["total"] - batch_snapshot["ng"]   # OK สะสมใน batch (รวมใบนี้)
+        save_image = self._should_save_image(result["verdict"], ok_count)
+
         self._db.save_inspection(
             piece_id      = internal_piece_id,
             batch_id      = batch_snapshot["id"],
@@ -542,16 +563,13 @@ class CameraWorker(QThread):
                     (time.perf_counter() - t0) * 1000,
                     "yes" if save_image else "no")
 
-        # เซฟภาพเป็นไฟล์แยกในโฟลเดอร์เฉพาะ (เพิ่มจาก DB — DB ยังเก็บไว้ให้ preview ใช้)
-        #   NG → ทุกชิ้น ; OK → สุ่มทุก OK_FILE_SAMPLE_EVERY_N ชิ้น
+        # เซฟภาพเป็นไฟล์แยกในโฟลเดอร์เฉพาะ — ใช้ save_image ตัวเดียวกับ DB (ไม่ให้เพี้ยนกัน)
         b64 = result.get("image_b64")
-        if b64:
-            if result["verdict"] == "NG":
-                self._save_image_file(b64, timestamp, internal_piece_id, NG_IMAGE_DIR, "NG")
-            else:
-                ok_count = batch_snapshot["total"] - batch_snapshot["ng"]   # OK สะสมใน batch (รวมตัวนี้)
-                if ok_count > 0 and ok_count % OK_FILE_SAMPLE_EVERY_N == 0:
-                    self._save_image_file(b64, timestamp, internal_piece_id, OK_IMAGE_DIR, "OK")
+        if b64 and save_image:
+            directory, prefix = (
+                (NG_IMAGE_DIR, "NG") if result["verdict"] == "NG" else (OK_IMAGE_DIR, "OK")
+            )
+            self._save_image_file(b64, timestamp, internal_piece_id, directory, prefix)
 
         # cleanup โฟลเดอร์ภาพเก่า (throttle — ไม่เดิน FS ทุกชิ้น)
         if time.time() - getattr(self, "_last_img_cleanup", 0.0) > IMG_CLEANUP_INTERVAL_S:

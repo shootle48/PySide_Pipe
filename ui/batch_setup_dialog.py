@@ -43,6 +43,8 @@ from PySide6.QtWidgets import (
     QSpinBox, QVBoxLayout, QWidget,
 )
 
+from ui.numpad import NumPad
+
 
 # ลำดับ: ใหญ่ → กลาง → เล็ก  (1, 2, 3)
 SIZE_OPTIONS = ("L", "M", "S")
@@ -264,7 +266,11 @@ class BatchSetupDialog(QDialog):
         self._target_spin.setButtonSymbols(QSpinBox.NoButtons)   # เอาลูกศรขึ้น/ลงออก
         # Force Arabic numerals (0-9) — ป้องกันเลขไทย (๐-๙) บน locale ภาษาไทย
         self._target_spin.setLocale(QLocale(QLocale.Language.English, QLocale.Country.UnitedStates))
+        self._target_spin.setReadOnly(True)   # กรอกผ่าน numpad เท่านั้น (จอ touchscreen ไม่มีคีย์บอร์ด)
         root.addWidget(self._target_spin)
+
+        # Numpad — ป้อน Target บนจอ touchscreen (ไม่ต้องใช้คีย์บอร์ด)
+        root.addWidget(NumPad(self._target_spin))
 
         # Action buttons
         btn_row = QHBoxLayout()

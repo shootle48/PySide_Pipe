@@ -359,8 +359,11 @@ class RS485OutputWriter(QObject):
         self._pulse_s = pulse_ms / 1000.0
         # lock เดียวกับ RS485InputWorker — serialize การเขียนกับการ poll อ่าน (กัน frame ชน)
         self._bus_lock = bus_lock
-        # คิว + writer thread เดียว — ส่ง pulse ทีละลูกตามลำดับ (กันซ้อน)
-        self._queue: "queue.Queue[tuple[str, int] | None]" = queue.Queue()
+        # คิว + writer thread เดียว — ส่งคำสั่งทีละอันตามลำดับ (กันซ้อน + serialize กับ input poll)
+        #   item = ("pulse", bit, verdict)  → pulse HIGH→LOW (OK/NG verdict)
+        #   item = ("level", bit, value)    → ตั้ง output ค้างค่า (ไฟ job ON/OFF)
+        #   item = None                     → sentinel หยุด thread
+        self._queue: "queue.Queue[tuple | None]" = queue.Queue()
         self._running = True
         self._thread = threading.Thread(
             target=self._writer_loop, daemon=True, name="RS485Writer"
@@ -384,10 +387,18 @@ class RS485OutputWriter(QObject):
             return
 
         bit = self._ok_bit if verdict == "OK" else self._ng_bit
-        self._queue.put((verdict, bit))   # writer thread จะส่งทีละลูกตามลำดับ
+        self._queue.put(("pulse", bit, verdict))   # writer thread จะส่งทีละลูกตามลำดับ
+
+    def set_output(self, bit: int, value: int) -> None:
+        """ตั้ง output แบบ level (ค้างค่า ไม่ pulse) — non-blocking (แค่ put เข้าคิว)
+
+        ส่งผ่านคิว/เธรดเดียวกับ verdict pulse → serialize กับ input poll บน bus เส้นเดียว
+        (ถือ bus_lock ตอนเขียน). ใช้กับไฟ job: value=1 (ON) / value=0 (OFF).
+        """
+        self._queue.put(("level", bit, int(bool(value))))
 
     def _writer_loop(self) -> None:
-        """เธรดเดียวที่ส่ง pulse ตามคิว — ลูกถัดไปเริ่มหลังลูกก่อนหน้า LOW เสร็จ"""
+        """เธรดเดียวที่ส่งคำสั่งตามคิว — คำสั่งถัดไปเริ่มหลังอันก่อนหน้าเสร็จ"""
         while self._running:
             try:
                 item = self._queue.get(timeout=0.2)
@@ -395,8 +406,13 @@ class RS485OutputWriter(QObject):
                 continue
             if item is None:        # sentinel จาก stop()
                 break
-            verdict, bit = item
-            self._emit_pulse(verdict, bit)
+            kind, bit, arg = item
+            if kind == "pulse":
+                self._emit_pulse(arg, bit)      # arg = verdict
+            elif kind == "level":
+                self._write_level(bit, arg)     # arg = value (0/1)
+            else:
+                app_log.warning(f"RS485OutputWriter: unknown queue item kind '{kind}', skipped")
 
     def _emit_pulse(self, verdict: str, bit: int) -> None:
         """ส่ง 1 pulse: HIGH → หน่วง pulse_s → LOW. ถือ bus_lock เฉพาะตอน write
@@ -420,6 +436,17 @@ class RS485OutputWriter(QObject):
                 f"failed to send verdict {verdict} to PLC — sorter อาจไม่ทำงาน"
             )
             self.write_complete.emit(verdict, False)
+
+    def _write_level(self, bit: int, value: int) -> None:
+        """ตั้ง output ค้างค่า (level) — ไม่ pulse. ถือ bus_lock เฉพาะตอน write."""
+        lock = self._bus_lock or contextlib.nullcontext()
+        try:
+            with lock:
+                self._io.write_output(bit, value)
+            app_log.info(f"output level bit {bit} -> {value}")
+        except (OSError, _ModbusException) as exc:
+            smartsense_log.error(f"write_output(bit={bit}, value={value}) FAILED (level): {exc}")
+            app_log.warning("failed to set level output (ไฟ) — สถานะ output อาจไม่เปลี่ยน")
 
     def stop(self) -> None:
         """หยุด writer thread อย่างสะอาด (เรียกตอนปิดโปรแกรม)"""

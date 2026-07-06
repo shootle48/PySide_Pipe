@@ -52,6 +52,7 @@ from ui.db_viewer             import DbViewerDialog
 from ui.camera_select_dialog  import CameraSelectDialog, scan_cameras
 from ui.maintenance_widget    import MaintenanceWidget
 from ui.batch_setup_dialog    import request_batch_setup
+from ui.numpad                import NumPad
 from core.rs485_worker import RS485InputWorker, RS485OutputWriter, MockRS485DIO, LoggingRS485DIO
 # Note: `rs485_dio` (real hardware) imports lazily — see _init_rs485() below
 # ไม่ import ตรงนี้เพราะต้องใช้ minimalmodbus/pyserial ที่ไม่มีบน Windows dev
@@ -59,7 +60,7 @@ from core.rs485_worker import RS485InputWorker, RS485OutputWriter, MockRS485DIO,
 logger = logging.getLogger(__name__)
 
 # ── Config ─────────────────────────────────────────────────────────────────
-CAMERA_INDEX     = 2
+CAMERA_INDEX     = 4
 TRIGGER_MODE     = TriggerMode.MANUAL
 TIMER_INTERVAL   = 6.0
 RESULT_VIEW_SECS = 4           # seconds to show result before returning to live
@@ -71,11 +72,12 @@ RESULT_VIEW_SECS = 4           # seconds to show result before returning to live
 RS485_MODE       = "off"
 RS485_WATCH_BITS = [0]
 RS485_NG_OUTPUT_BIT = 1        # inputs ที่ watch (I0 = trigger sensor default)
+RS485_LIGHT_OUTPUT_BIT = 2     # ไฟ job (level output) — ต้อง ≠ OK(0)/NG(1) กันชน sorter ; ยืนยันสายกับทีม Smart-Sense
 
 # Detection threshold config (MA Mode)
 #   "off" — ซ่อน slider ใน Reset Batch dialog (default สำหรับลูกค้า)
 #   "on"  — แสดง slider ให้ MA ปรับ min_defect_area per size ได้
-DETECTION_THRESHOLD_MODE = "off"
+DETECTION_THRESHOLD_MODE = "on"
 
 
 class MainWindow(QMainWindow):
@@ -143,6 +145,7 @@ class MainWindow(QMainWindow):
         self._io_worker: RS485InputWorker | None = None
         self._output_writer: RS485OutputWriter | None = None
         self._io_source = None   # keep reference so GC doesn't kill mock
+        self._job_light_on: bool = False   # สถานะไฟ job ปัจจุบัน (กันส่งซ้ำ)
         self._init_rs485()
 
     def _init_rs485(self) -> None:
@@ -205,6 +208,33 @@ class MainWindow(QMainWindow):
             logger.error("RS485: worker setup failed (%s) — running without RS485", exc)
             self._io_worker = None
             self._output_writer = None
+            return
+
+        # ตั้งไฟ job ให้ตรงกับ batch ที่ recover ตอนเปิดแอป (ยังไม่ครบ target → ติด)
+        self._sync_job_light(self._batch_state.get_state(), "startup recover")
+
+    # ── Job light (RS485 level output) ───────────────────────────────────────
+    #  ไฟติดเมื่อ job มีเป้า (expected_total>0) และยังตรวจไม่ครบ (total<expected)
+    #  ดับเมื่อครบ target / ไม่มีเป้า / ปิดโปรแกรม. ส่งผ่าน RS485OutputWriter (level, ผ่านคิวเดียวกับ verdict)
+
+    @staticmethod
+    def _job_light_should_be_on(batch: dict) -> bool:
+        exp = batch.get("expected_total", 0)
+        return exp > 0 and batch.get("total", 0) < exp
+
+    def _set_job_light(self, on: bool, reason: str) -> None:
+        """สั่งไฟ job ON/OFF. no-op ถ้าไม่มี writer (RS485 off / setup พัง) หรือสถานะเดิมอยู่แล้ว."""
+        if self._output_writer is None:
+            return
+        if on == self._job_light_on:      # กันส่งซ้ำ (idempotent)
+            return
+        self._job_light_on = on
+        self._output_writer.set_output(RS485_LIGHT_OUTPUT_BIT, 1 if on else 0)
+        logger.info("Job light %s (%s)", "ON" if on else "OFF", reason)
+
+    def _sync_job_light(self, batch: dict, reason: str) -> None:
+        """ตั้งไฟตามกฎเดียว (คำนวณจาก batch snapshot)."""
+        self._set_job_light(self._job_light_should_be_on(batch), reason)
 
     @Slot(int)
     def _on_rs485_pulse(self, bit: int) -> None:
@@ -474,15 +504,19 @@ class MainWindow(QMainWindow):
         self._missing_label.setObjectName("missingLabel")
         c_layout.addWidget(self._missing_label)
 
-        # Set / Edit target button
+        # Set / Edit target button — รอง (แค่ปรับเป้าใน batch เดิม ไม่ล้าง counter)
         self._expected_btn = QPushButton("Set Target")
         self._expected_btn.setObjectName("secondaryBtn")
+        self._expected_btn.setFixedHeight(40)
         self._expected_btn.clicked.connect(self._set_expected)
         c_layout.addWidget(self._expected_btn)
 
-        # Reset button
-        self._reset_btn = QPushButton("Reset Batch")
+        # Reset button — ปุ่มหลัก (เริ่ม batch ใหม่ + เปลี่ยน size) เน้นเด่นสุด
+        # feedback หน้างาน: ลูกค้าไม่รู้ปุ่มไหนสำคัญ → ทำใหญ่+สีเต็ม ให้ชัดว่าอันนี้คือตัวหลัก
+        self._reset_btn = QPushButton("RESET BATCH")
         self._reset_btn.setObjectName("resetBtn")
+        self._reset_btn.setMinimumHeight(76)
+        self._reset_btn.setCursor(Qt.PointingHandCursor)
         self._reset_btn.clicked.connect(self._reset_batch)
         c_layout.addWidget(self._reset_btn)
 
@@ -587,7 +621,12 @@ class MainWindow(QMainWindow):
         )
 
         self._update_inference_label(result.get("inference_ms"))
-        self._update_counters(result.get("batch", {}))
+        batch = result.get("batch", {})
+        self._update_counters(batch)
+        # ครบ target → ดับไฟ job (ใช้ counter หลัง persist เป็น source of truth)
+        self._sync_job_light(
+            batch, f"after result ({batch.get('total', 0)}/{batch.get('expected_total', 0)})"
+        )
         self._prepend_history_row(result)
         self._flash_verdict(result.get("verdict", ""))
 
@@ -1051,6 +1090,7 @@ class MainWindow(QMainWindow):
             expected_size  = size,
         )
         self._update_counters(new_state)
+        self._sync_job_light(new_state, "batch reset")   # target>0 → เปิดไฟ job ใหม่
         self._history_list.clear()
         self._frame_widget.show_placeholder(
             f"Batch ใหม่ (size={size}, target={target}) — กดปุ่ม Capture เพื่อเริ่ม"
@@ -1067,7 +1107,7 @@ class MainWindow(QMainWindow):
         dlg = QDialog(self)
         dlg.setWindowTitle("Set Target")
         dlg.setModal(True)
-        dlg.setMinimumWidth(320)
+        dlg.setMinimumWidth(360)
         _layout = QVBoxLayout(dlg)
         _layout.setContentsMargins(20, 20, 20, 20)
         _layout.setSpacing(12)
@@ -1076,11 +1116,18 @@ class MainWindow(QMainWindow):
         _spin = QSpinBox()
         _spin.setRange(0, 1_000_000)
         _spin.setValue(current)
-        _spin.setFixedHeight(44)
+        _spin.setFixedHeight(52)
         _spin.setAlignment(Qt.AlignCenter)
+        _spin.setButtonSymbols(QSpinBox.NoButtons)   # เอาลูกศรออก — ใช้ numpad แทน
+        _spin.setReadOnly(True)                       # กรอกผ่าน numpad เท่านั้น (จอ touchscreen)
         # Force Arabic numerals — ป้องกันเลขไทย (๐-๙) บน locale ภาษาไทย
         _spin.setLocale(QLocale(QLocale.Language.English, QLocale.Country.UnitedStates))
+        _spin.setStyleSheet("font-size: 22px; font-weight: bold; padding: 4px 8px;")
         _layout.addWidget(_spin)
+
+        # Numpad — ป้อนค่าบนจอ touchscreen (ไม่ต้องใช้คีย์บอร์ด)
+        _layout.addWidget(NumPad(_spin))
+
         _btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         _btns.accepted.connect(dlg.accept)
         _btns.rejected.connect(dlg.reject)
@@ -1091,6 +1138,8 @@ class MainWindow(QMainWindow):
         expected = _spin.value()
         new_state = self._batch_state.set_expected_total(expected)
         self._update_counters(new_state)
+        # target ≤ total → ดับ ; target > total → ติด ; target 0 → ดับ
+        self._sync_job_light(new_state, "target changed")
 
 
         # Return to live view
@@ -1123,6 +1172,7 @@ class MainWindow(QMainWindow):
             self._io_worker.stop()
             self._io_worker.wait(2000)
         if self._output_writer is not None:
+            self._set_job_light(False, "app closing")   # ดับไฟก่อน (enqueue ก่อน stop → เขียนก่อน thread จบ)
             self._output_writer.stop()   # หยุด writer thread + เคลียร์คิว verdict
         if self._io_source is not None and hasattr(self._io_source, "stop"):
             self._io_source.stop()   # MockRS485DIO has its own pulse thread
@@ -1482,24 +1532,19 @@ class MainWindow(QMainWindow):
             }
             #dangerBtn:hover   { background: #ffebee; }
             #dangerBtn:pressed { background: #ffcdd2; }
+            /* Reset Batch = ปุ่มหลัก (สีเต็ม+ใหญ่) — เด่นกว่า Set Target ชัดเจน */
             #resetBtn {
-                background: #ffffff;
-                color: #52606d;
-                border: 2px solid #a8b0ba;
-                border-radius: 6px;
-                font-size: 14px;
+                background: #ef6c00;
+                color: #ffffff;
+                border: 2px solid #e65100;
+                border-radius: 8px;
+                font-size: 19px;
                 font-weight: bold;
-                letter-spacing: 0.5px;
+                letter-spacing: 1.5px;
                 padding: 10px;
             }
-            #resetBtn:hover {
-                background: #fff3e0;
-                color: #ef6c00;
-                border-color: #ef6c00;
-            }
-            #resetBtn:pressed {
-                background: #ffe0b2;
-            }
+            #resetBtn:hover   { background: #f57c00; }
+            #resetBtn:pressed { background: #e65100; }
 
             /* ── Verdict badges (last result) ─────────────────────────── */
             QLabel[objectName="verdictBadge_OK"] {
