@@ -53,6 +53,7 @@ from ui.camera_select_dialog  import CameraSelectDialog, scan_cameras
 from ui.maintenance_widget    import MaintenanceWidget
 from ui.batch_setup_dialog    import request_batch_setup
 from ui.numpad                import NumPad
+from core.usb_light           import UsbLight
 from core.rs485_worker import RS485InputWorker, RS485OutputWriter, MockRS485DIO, LoggingRS485DIO
 # Note: `rs485_dio` (real hardware) imports lazily — see _init_rs485() below
 # ไม่ import ตรงนี้เพราะต้องใช้ minimalmodbus/pyserial ที่ไม่มีบน Windows dev
@@ -72,7 +73,14 @@ RESULT_VIEW_SECS = 4           # seconds to show result before returning to live
 RS485_MODE       = "off"
 RS485_WATCH_BITS = [0]
 RS485_NG_OUTPUT_BIT = 1        # inputs ที่ watch (I0 = trigger sensor default)
-RS485_LIGHT_OUTPUT_BIT = 2     # ไฟ job (level output) — ต้อง ≠ OK(0)/NG(1) กันชน sorter ; ยืนยันสายกับทีม Smart-Sense
+RS485_LIGHT_OUTPUT_BIT = 2     # ไฟ job หลอด 1: relay ผ่าน DIO (level) — ต้อง ≠ OK(0)/NG(1) กันชน sorter
+
+# ไฟ job หลอด 2: เสียบพอร์ต USB ของ Jetson (ตัด/จ่าย VBUS ผ่าน uhubctl — ดู core/usb_light.py)
+#   หา hub/port ที่สั่งได้จริงก่อนด้วย scripts/test_usb_light.py --list
+#   ⚠️ ห้ามเสียบไฟร่วม hub กับกล้อง/dongle RS485 — บาง hub ตัดไฟทีเดียวดับทั้งแผง (ganged)
+USB_LIGHT_ENABLED = False      # True = เปิดใช้หลอด USB
+USB_LIGHT_HUB     = "1-2"      # hub location (จาก sudo uhubctl)
+USB_LIGHT_PORT    = 1          # port ใน hub นั้น
 
 # Detection threshold config (MA Mode)
 #   "off" — ซ่อน slider ใน Reset Batch dialog (default สำหรับลูกค้า)
@@ -124,6 +132,18 @@ class MainWindow(QMainWindow):
         self._result_timer.setSingleShot(True)
         self._result_timer.timeout.connect(self._return_to_live)
 
+        # ── Job light state (ต้องมาก่อน _build_ui — ปุ่มไฟใช้ค่าเหล่านี้) ──
+        self._job_light_on: bool = False   # สถานะไฟปัจจุบัน (กันส่งซ้ำ)
+        self._light_mode: str = "auto"     # auto = ตาม job logic | on/off = manual override
+        self._usb_light: UsbLight | None = None   # ไฟหลอด 2 (USB VBUS)
+        if USB_LIGHT_ENABLED:
+            _ul = UsbLight(USB_LIGHT_HUB, USB_LIGHT_PORT)
+            if _ul.available():
+                self._usb_light = _ul
+                logger.info("UsbLight: enabled (hub %s port %d)", USB_LIGHT_HUB, USB_LIGHT_PORT)
+            else:
+                logger.warning("UsbLight: ไม่พบ uhubctl — ปิดฟีเจอร์ (sudo apt install uhubctl)")
+
         # ── Build UI ───────────────────────────────────────────────────────
         self._build_ui()
         self._apply_stylesheet()
@@ -145,8 +165,10 @@ class MainWindow(QMainWindow):
         self._io_worker: RS485InputWorker | None = None
         self._output_writer: RS485OutputWriter | None = None
         self._io_source = None   # keep reference so GC doesn't kill mock
-        self._job_light_on: bool = False   # สถานะไฟ job ปัจจุบัน (กันส่งซ้ำ)
         self._init_rs485()
+        # ตั้งไฟ job ตาม batch ที่ recover — อยู่นอก _init_rs485 เพราะไฟ USB
+        # ทำงานได้แม้ RS485_MODE="off" (สองหลอดอิสระกัน)
+        self._sync_job_light(self._batch_state.get_state(), "startup recover")
 
     def _init_rs485(self) -> None:
         """
@@ -208,14 +230,10 @@ class MainWindow(QMainWindow):
             logger.error("RS485: worker setup failed (%s) — running without RS485", exc)
             self._io_worker = None
             self._output_writer = None
-            return
 
-        # ตั้งไฟ job ให้ตรงกับ batch ที่ recover ตอนเปิดแอป (ยังไม่ครบ target → ติด)
-        self._sync_job_light(self._batch_state.get_state(), "startup recover")
-
-    # ── Job light (RS485 level output) ───────────────────────────────────────
-    #  ไฟติดเมื่อ job มีเป้า (expected_total>0) และยังตรวจไม่ครบ (total<expected)
-    #  ดับเมื่อครบ target / ไม่มีเป้า / ปิดโปรแกรม. ส่งผ่าน RS485OutputWriter (level, ผ่านคิวเดียวกับ verdict)
+    # ── Job light (2 หลอดอิสระ: relay ผ่าน RS485 bit + หลอด USB VBUS) ────────
+    #  auto: ติดเมื่อ job มีเป้า (expected_total>0) และยังไม่ครบ ; ดับเมื่อครบ/ไม่มีเป้า/ปิดแอป
+    #  manual (ปุ่ม): บังคับ เปิด/ปิด — โหมด manual แล้ว logic auto จะไม่แตะไฟจนกดกลับ AUTO
 
     @staticmethod
     def _job_light_should_be_on(batch: dict) -> bool:
@@ -223,18 +241,43 @@ class MainWindow(QMainWindow):
         return exp > 0 and batch.get("total", 0) < exp
 
     def _set_job_light(self, on: bool, reason: str) -> None:
-        """สั่งไฟ job ON/OFF. no-op ถ้าไม่มี writer (RS485 off / setup พัง) หรือสถานะเดิมอยู่แล้ว."""
-        if self._output_writer is None:
+        """สั่งไฟทั้ง 2 หลอด (เท่าที่มี). no-op ถ้าไม่มีช่องทางเลย หรือสถานะเดิมอยู่แล้ว."""
+        if self._output_writer is None and self._usb_light is None:
             return
         if on == self._job_light_on:      # กันส่งซ้ำ (idempotent)
             return
         self._job_light_on = on
-        self._output_writer.set_output(RS485_LIGHT_OUTPUT_BIT, 1 if on else 0)
+        if self._output_writer is not None:                       # หลอด 1: relay ผ่าน DIO
+            self._output_writer.set_output(RS485_LIGHT_OUTPUT_BIT, 1 if on else 0)
+        if self._usb_light is not None:                           # หลอด 2: USB VBUS
+            self._usb_light.set(on)
         logger.info("Job light %s (%s)", "ON" if on else "OFF", reason)
 
     def _sync_job_light(self, batch: dict, reason: str) -> None:
-        """ตั้งไฟตามกฎเดียว (คำนวณจาก batch snapshot)."""
+        """ตั้งไฟตามกฎ auto — เว้นถ้า operator บังคับ manual อยู่ (กันไฟเด้งสวนมือ)."""
+        if self._light_mode != "auto":
+            return
         self._set_job_light(self._job_light_should_be_on(batch), reason)
+
+    @Slot()
+    def _on_light_btn(self) -> None:
+        """ปุ่มไฟ 3 โหมด: AUTO → เปิด(manual) → ปิด(manual) → AUTO"""
+        self._light_mode = {"auto": "on", "on": "off", "off": "auto"}[self._light_mode]
+        if self._light_mode == "auto":
+            # กลับ auto → ปรับไฟให้ตรงสถานะ job ปัจจุบันทันที
+            self._sync_job_light(self._batch_state.get_state(), "manual → auto")
+        else:
+            self._set_job_light(self._light_mode == "on", "manual")
+        self._update_light_btn()
+
+    def _update_light_btn(self) -> None:
+        labels = {"auto": "ไฟ: AUTO", "on": "ไฟ: เปิดอยู่ (manual)", "off": "ไฟ: ปิดอยู่ (manual)"}
+        self._light_btn.setText(labels[self._light_mode])
+        # โหมด manual ให้เห็นชัดว่าหลุดจาก auto (ส้ม)
+        if self._light_mode == "auto":
+            self._light_btn.setStyleSheet("")
+        else:
+            self._light_btn.setStyleSheet("color:#ef6c00; border-color:#ef6c00;")
 
     @Slot(int)
     def _on_rs485_pulse(self, bit: int) -> None:
@@ -519,6 +562,14 @@ class MainWindow(QMainWindow):
         self._reset_btn.setCursor(Qt.PointingHandCursor)
         self._reset_btn.clicked.connect(self._reset_batch)
         c_layout.addWidget(self._reset_btn)
+
+        # ปุ่มไฟ manual — วน AUTO → เปิด → ปิด (auto = ติด/ดับตาม job เอง)
+        self._light_btn = QPushButton()
+        self._light_btn.setObjectName("secondaryBtn")
+        self._light_btn.setFixedHeight(40)
+        self._light_btn.clicked.connect(self._on_light_btn)
+        self._update_light_btn()
+        c_layout.addWidget(self._light_btn)
 
         layout.addWidget(counters_card)
 
@@ -1171,9 +1222,10 @@ class MainWindow(QMainWindow):
         if self._io_worker is not None:
             self._io_worker.stop()
             self._io_worker.wait(2000)
+        # ดับไฟทั้ง 2 หลอดเสมอ (แม้ manual-ON / แม้ RS485 off — _set ข้าม mode guard)
+        self._set_job_light(False, "app closing")
         if self._output_writer is not None:
-            self._set_job_light(False, "app closing")   # ดับไฟก่อน (enqueue ก่อน stop → เขียนก่อน thread จบ)
-            self._output_writer.stop()   # หยุด writer thread + เคลียร์คิว verdict
+            self._output_writer.stop()   # หยุด writer thread + เคลียร์คิว verdict (ไฟ OFF อยู่คิวก่อน stop)
         if self._io_source is not None and hasattr(self._io_source, "stop"):
             self._io_source.stop()   # MockRS485DIO has its own pulse thread
 
