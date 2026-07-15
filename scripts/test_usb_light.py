@@ -35,6 +35,88 @@ logging.basicConfig(
 log = logging.getLogger("TEST-USB-LIGHT")
 
 
+def _parse_uhubctl(output: str) -> list[tuple[str, int, bool]]:
+    """parse output ของ uhubctl → [(hub, port, has_device)].
+
+    has_device = พอร์ตมีอุปกรณ์ enumerate อยู่ (มี 'connect'/[ชื่อ device]) —
+    ไฟ USB แบบ dumb load "ไม่โผล่" ในนี้ (ไม่มีชิป data) จึงต้องหาโดยตัดไฟดูหลอดจริง.
+    """
+    import re
+    result: list[tuple[str, int, bool]] = []
+    hub = None
+    for line in output.splitlines():
+        m = re.match(r"Current status for hub ([\d.-]+)", line)
+        if m:
+            hub = m.group(1)
+            continue
+        m = re.match(r"\s+Port (\d+): \S+ (.*)", line)
+        if m and hub is not None:
+            rest = m.group(2)
+            has_device = ("connect" in rest) or ("[" in rest)
+            result.append((hub, int(m.group(1)), has_device))
+    return result
+
+
+def scan(off_s: float = 3.0) -> int:
+    """ไล่ตัดไฟทีละพอร์ต "ที่ว่าง" แล้วให้คนดูหลอดจริง — หา hub/port ของไฟ USB.
+
+    ข้ามพอร์ตที่มีอุปกรณ์ (กล้อง/hub ลูก) กันดับของสำคัญ ; จบทุกพอร์ตจ่ายไฟคืนเสมอ.
+    """
+    try:
+        res = subprocess.run(["sudo", "-n", "uhubctl"], capture_output=True, text=True, timeout=10)
+    except FileNotFoundError:
+        log.error("ไม่พบ uhubctl — sudo apt install uhubctl")
+        return 1
+    ports = _parse_uhubctl(res.stdout or "")
+    if not ports:
+        log.error("parse uhubctl ไม่ได้ — รัน sudo uhubctl ดูเอง หรือเช็ค NOPASSWD")
+        return 1
+
+    empty = [(h, p) for h, p, dev in ports if not dev]
+    skip  = [(h, p) for h, p, dev in ports if dev]
+    log.info("ข้ามพอร์ตที่มีอุปกรณ์ (กันดับกล้อง/hub): %s", skip or "-")
+    log.info("จะไล่ตัดไฟทีละพอร์ตว่าง %d พอร์ต — **มองที่หลอดไฟ** แล้วตอบ", len(empty))
+    print()
+
+    from core.usb_light import UsbLight
+    found = None
+    try:
+        for hub, port in empty:
+            light = UsbLight(hub=hub, port=port)
+            print(f">> ตัดไฟ hub {hub} port {port} ({off_s:.0f} วิ) — หลอดดับไหม?")
+            if not light.set_blocking(False):
+                print("   (สั่งไม่ผ่าน — ข้าม)")
+                continue
+            ans = input("   [y=ดับ! / Enter=ไม่ดับ ไปต่อ / q=เลิก] : ").strip().lower()
+            light.set_blocking(True)   # จ่ายคืนก่อนตัดสินใจต่อ
+            if ans == "y":
+                found = (hub, port)
+                break
+            if ans == "q":
+                break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # กันหลุด: จ่ายไฟคืนทุกพอร์ตที่ไล่ผ่าน
+        for hub, port in empty:
+            UsbLight(hub=hub, port=port).set_blocking(True)
+
+    print()
+    if found:
+        hub, port = found
+        log.info("🎯 เจอแล้ว: hub=%s port=%d", hub, port)
+        log.info("ใส่ใน ui/main_window.py:")
+        log.info('  USB_LIGHT_ENABLED = True')
+        log.info('  USB_LIGHT_HUB     = "%s"', hub)
+        log.info('  USB_LIGHT_PORT    = %d', port)
+        log.info("แล้วยืนยันอีกรอบ: python3 scripts/test_usb_light.py --hub %s --port %d", hub, port)
+    else:
+        log.warning("ไล่ครบแล้วหลอดไม่ดับเลย = VBUS พอร์ต Jetson ต่อตรง 5V (ตัดไม่ได้จริง แม้ flag เป็น ppps)")
+        log.warning("ทางออก: เสียบไฟกับ hub แยก (GenesysLogic ที่มี) 'ตัวเดียวโดดๆ' — ganged ตัดทั้ง hub")
+        log.warning("  = ตัดไฟหลอดได้พอดี (ห้ามเสียบอย่างอื่นร่วม hub) ; ลอง: --hub 1-2.1 --port 1")
+    return 0
+
+
 def list_hubs() -> int:
     """โชว์ hub/port ทั้งหมดที่ uhubctl คุมได้ (ตรงนี้แหละคำตอบว่า 'พอร์ตไหนสั่งได้')"""
     try:
@@ -84,6 +166,8 @@ def blink(hub: str, port: int, on_s: float, off_s: float, cycles: int) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="หา hub/port + เทสไฟ USB (uhubctl)")
     ap.add_argument("--list", action="store_true", help="โชว์ hub/port ที่คุมได้ทั้งหมด")
+    ap.add_argument("--scan", action="store_true",
+                    help="ไล่ตัดไฟทีละพอร์ตว่าง ให้คุณดูหลอดแล้วตอบ y — หา port ของไฟ (ไฟ dumb load ไม่โผล่ใน --list)")
     ap.add_argument("--hub", help="hub location เช่น 1-2 (จาก --list)")
     ap.add_argument("--port", type=int, help="port ใน hub นั้น")
     ap.add_argument("--on-s", type=float, default=2.0)
@@ -91,6 +175,8 @@ def main() -> int:
     ap.add_argument("--cycles", type=int, default=3)
     args = ap.parse_args()
 
+    if args.scan:
+        return scan()
     if args.list:
         return list_hubs()
     if args.hub and args.port is not None:

@@ -13,9 +13,9 @@ UsbLight — สั่งเปิด/ปิดไฟที่เสียบพ
       echo "$USER ALL=(ALL) NOPASSWD: $(which uhubctl)" | sudo tee /etc/sudoers.d/uhubctl
 
 ใช้งาน:
-    light = UsbLight(hub="1-2", port=1)
-    light.set(True)    # จ่ายไฟพอร์ต (ไฟติด) — non-blocking (ยิงใน thread)
-    light.set(False)   # ตัดไฟพอร์ต (ไฟดับ)
+    light = UsbLight(hub="2-1", port=[3, 4])   # port เดียว หรือหลาย port (ganged ต้องคุมครบคู่)
+    light.set(True)    # จ่ายไฟทุก port (ไฟติด) — non-blocking (ยิงใน thread)
+    light.set(False)   # ตัดไฟทุก port (ไฟดับ)
 """
 from __future__ import annotations
 
@@ -35,13 +35,16 @@ class UsbLight:
     def __init__(
         self,
         hub: str,
-        port: int,
+        port: int | list[int],
         cmd: str = "uhubctl",
         use_sudo: bool = True,
         runner=None,            # inject ได้สำหรับเทส (default = subprocess.run)
     ) -> None:
         self._hub = hub
-        self._port = port
+        if isinstance(port, int):
+            self._ports = [port]
+        else:
+            self._ports = list(port)
         self._cmd = cmd
         self._use_sudo = use_sudo
         self._runner = runner or subprocess.run
@@ -56,25 +59,33 @@ class UsbLight:
                          name="UsbLight").start()
 
     def set_blocking(self, on: bool) -> bool:
-        """สั่งไฟแบบรอผล — คืน True ถ้าสำเร็จ (ใช้ใน test script ; แอปใช้ set() แทน)."""
+        """สั่งไฟแบบรอผล — ยิง "ทุก port" ให้ครบ (ganged ต้องคุมพร้อมกัน) คืน True
+        ก็ต่อเมื่อทุก port สำเร็จ (ใช้ใน test script ; แอปใช้ set() แทน)."""
         action = "on" if on else "off"
+        all_ok = True
+        for port in self._ports:
+            all_ok = self._one_port(action, port) and all_ok   # ยิงครบก่อนเสมอ (ไม่ short-circuit)
+        return all_ok
+
+    def _one_port(self, action: str, port: int) -> bool:
         argv = (["sudo", "-n"] if self._use_sudo else []) + [
-            self._cmd, "-l", self._hub, "-p", str(self._port), "-a", action,
+            self._cmd, "-l", self._hub, "-p", str(port), "-a", action,
         ]
+        logger.debug("Running: %s", " ".join(argv))
         try:
             res = self._runner(argv, capture_output=True, text=True, timeout=_CMD_TIMEOUT_S)
             if res.returncode == 0:
-                logger.info("UsbLight: %s (hub %s port %s)", action.upper(), self._hub, self._port)
+                logger.info("UsbLight: %s (hub %s port %s)", action.upper(), self._hub, port)
                 return True
             # sudo ต้องการรหัส (rc=1 จาก -n) / hub ไม่รองรับ / พอร์ตผิด
             logger.warning(
-                "UsbLight: uhubctl fail rc=%d (%s) — เช็ค sudoers NOPASSWD / hub รองรับ power switching ไหม",
-                res.returncode, (res.stderr or res.stdout or "").strip()[:200],
+                "UsbLight: uhubctl fail rc=%d port %s (%s) — เช็ค sudoers NOPASSWD / hub รองรับ power switching ไหม",
+                res.returncode, port, (res.stderr or res.stdout or "").strip()[:200],
             )
         except FileNotFoundError:
             logger.warning("UsbLight: ไม่พบ uhubctl — ติดตั้ง: sudo apt install uhubctl")
         except subprocess.TimeoutExpired:
-            logger.warning("UsbLight: uhubctl ค้างเกิน %.0fs — ข้าม", _CMD_TIMEOUT_S)
+            logger.warning("UsbLight: uhubctl ค้างเกิน %.0fs (port %s) — ข้าม", _CMD_TIMEOUT_S, port)
         except OSError as exc:
-            logger.warning("UsbLight: สั่งไม่สำเร็จ (%s) — ข้าม", exc)
+            logger.warning("UsbLight: สั่งไม่สำเร็จ port %s (%s) — ข้าม", port, exc)
         return False

@@ -76,11 +76,12 @@ RS485_NG_OUTPUT_BIT = 1        # inputs ที่ watch (I0 = trigger sensor def
 RS485_LIGHT_OUTPUT_BIT = 2     # ไฟ job หลอด 1: relay ผ่าน DIO (level) — ต้อง ≠ OK(0)/NG(1) กันชน sorter
 
 # ไฟ job หลอด 2: เสียบพอร์ต USB ของ Jetson (ตัด/จ่าย VBUS ผ่าน uhubctl — ดู core/usb_light.py)
-#   หา hub/port ที่สั่งได้จริงก่อนด้วย scripts/test_usb_light.py --list
-#   ⚠️ ห้ามเสียบไฟร่วม hub กับกล้อง/dongle RS485 — บาง hub ตัดไฟทีเดียวดับทั้งแผง (ganged)
+#   หา port ที่ดับไฟจริงด้วย scripts/test_usb_light.py --scan
+#   ⚠️ ห้ามเสียบไฟร่วม hub กับกล้อง/dongle RS485 — hub นี้ ganged ตัดไฟทีเดียวดับทั้งแผง
+#   หน้างาน Jetson นี้: ไฟดับต่อเมื่อคุม 2-1 "ทั้ง port 3 และ 4 พร้อมกัน" → USB_LIGHT_PORT = [3, 4]
 USB_LIGHT_ENABLED = False      # True = เปิดใช้หลอด USB
-USB_LIGHT_HUB     = "1-2"      # hub location (จาก sudo uhubctl)
-USB_LIGHT_PORT    = 1          # port ใน hub นั้น
+USB_LIGHT_HUB     = "2-1"      # hub location (จาก sudo uhubctl)
+USB_LIGHT_PORT    = [3, 4]     # int เดียว หรือ list หลาย port (ยิงครบทุก port)
 
 # Detection threshold config (MA Mode)
 #   "off" — ซ่อน slider ใน Reset Batch dialog (default สำหรับลูกค้า)
@@ -140,9 +141,12 @@ class MainWindow(QMainWindow):
             _ul = UsbLight(USB_LIGHT_HUB, USB_LIGHT_PORT)
             if _ul.available():
                 self._usb_light = _ul
-                logger.info("UsbLight: enabled (hub %s port %d)", USB_LIGHT_HUB, USB_LIGHT_PORT)
+                logger.info("Job light หลอด 2 (USB VBUS): เปิดใช้ — hub %s port %s",
+                            USB_LIGHT_HUB, _ul._ports)
             else:
-                logger.warning("UsbLight: ไม่พบ uhubctl — ปิดฟีเจอร์ (sudo apt install uhubctl)")
+                logger.warning("Job light หลอด 2 (USB): ไม่พบ uhubctl — ปิดฟีเจอร์ (sudo apt install uhubctl)")
+        else:
+            logger.info("Job light หลอด 2 (USB VBUS): ปิด (USB_LIGHT_ENABLED=False)")
 
         # ── Build UI ───────────────────────────────────────────────────────
         self._build_ui()
