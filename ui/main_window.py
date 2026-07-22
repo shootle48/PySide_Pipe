@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 import threading
 
-from PySide6.QtCore    import QLocale, QSize, Qt, QSettings, QTimer, Slot
+from PySide6.QtCore    import QEvent, QLocale, QSize, Qt, QSettings, QTimer, Slot
 from PySide6.QtGui     import QColor, QFont, QIcon
 from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QFileDialog, QFrame, QHBoxLayout, QInputDialog,
@@ -73,7 +73,9 @@ RESULT_VIEW_SECS = 4           # seconds to show result before returning to live
 RS485_MODE       = "off"
 RS485_WATCH_BITS = [0]
 RS485_NG_OUTPUT_BIT = 1        # inputs ที่ watch (I0 = trigger sensor default)
-RS485_LIGHT_OUTPUT_BIT = 2     # ไฟ job หลอด 1: relay ผ่าน DIO (level) — ต้อง ≠ OK(0)/NG(1) กันชน sorter
+RS485_LIGHT_OUTPUT_BIT = 3     # ไฟ job หลอด 1: relay DIO "DO bit 4" ของ Smart-Sense = register address 3
+                               # (confirm พี่ Smart-Sense 2026-07-15 ; library ส่ง index เป็น address ตรงๆ ไม่มี offset)
+                               # ห้ามชน OK(0)/NG(1) — sorter ใช้อยู่
 
 # ไฟ job หลอด 2: เสียบพอร์ต USB ของ Jetson (ตัด/จ่าย VBUS ผ่าน uhubctl — ดู core/usb_light.py)
 #   หา port ที่ดับไฟจริงด้วย scripts/test_usb_light.py --scan
@@ -82,6 +84,13 @@ RS485_LIGHT_OUTPUT_BIT = 2     # ไฟ job หลอด 1: relay ผ่าน D
 USB_LIGHT_ENABLED = False      # True = เปิดใช้หลอด USB
 USB_LIGHT_HUB     = "2-1"      # hub location (จาก sudo uhubctl)
 USB_LIGHT_PORT    = [3, 4]     # int เดียว หรือ list หลาย port (ยิงครบทุก port)
+
+# ── Kiosk mode (ล็อคหน้าจอหน้างาน) ─────────────────────────────────────────
+# จอ touch หน้างานมี ghost touch — กดค้างกลายเป็นลาก → หน้าต่างโดนย่อ/ลาก/สลับ workspace
+# True  = ไม่มีแถบ title (ลากไม่ได้) + อยู่บนสุด + ย่อไม่ได้ (เด้งกลับ) + ปิดได้เฉพาะปุ่ม "ออกจากโปรแกรม"
+# False = หน้าต่างปกติ (ใช้ตอน debug บน dev)
+# ⚠️ ฝั่ง GNOME ต้องล็อคด้วย: bash scripts/kiosk_lockdown.sh (Qt กัน gesture ของ Shell ไม่ได้)
+KIOSK_MODE = True
 
 # Detection threshold config (MA Mode)
 #   "off" — ซ่อน slider ใน Reset Batch dialog (default สำหรับลูกค้า)
@@ -106,6 +115,14 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Pipe Inspector")
         self.resize(1280, 760)
         self.setMinimumSize(900, 600)
+
+        # ── Kiosk lock ─────────────────────────────────────────────────────
+        # ปลดเป็น True เฉพาะตอนกดปุ่ม "ออกจากโปรแกรม" + ยืนยัน หรือ SIGTERM (main.py)
+        # — closeEvent เช็คตัวนี้ก่อนยอมปิด (บล็อก Alt+F4 / ปุ่มปิดของ WM / ghost touch)
+        self._exit_authorized = False
+        if KIOSK_MODE:
+            # Frameless = ไม่มีแถบ title ให้ ghost touch ลาก ; StaysOnTop = ไม่โดนหน้าต่างอื่นบัง
+            self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
 
         # ── Persisted settings ─────────────────────────────────────────────
         self._settings     = QSettings()   # uses app/org name from main.py
@@ -384,6 +401,16 @@ class MainWindow(QMainWindow):
         db_btn.setMinimumWidth(110)
         db_btn.clicked.connect(self._open_db_viewer)
         layout.addWidget(db_btn)
+
+        # ทางออกเดียวของ kiosk mode (ไม่มีปุ่ม X แล้ว) — ต้องยืนยันใน dialog อีกชั้น
+        if KIOSK_MODE:
+            exit_btn = QPushButton("ออกจากโปรแกรม")
+            exit_btn.setObjectName("exitBtn")
+            exit_btn.setFixedHeight(44)
+            exit_btn.setMinimumWidth(140)
+            exit_btn.setToolTip("ปิดโปรแกรม (ต้องยืนยัน) — เครื่องจะหยุดตรวจจนกว่าจะเปิดใหม่")
+            exit_btn.clicked.connect(self._on_exit_clicked)
+            layout.addWidget(exit_btn)
 
         return header
 
@@ -1205,11 +1232,63 @@ class MainWindow(QMainWindow):
         logger.info(f"Batch reset → {new_state['id']}")
 
     # ══════════════════════════════════════════════════════════════════════
+    # Kiosk lock — กัน ghost touch ย่อ/ลาก/ปิดหน้าต่าง
+    # ══════════════════════════════════════════════════════════════════════
+
+    def _on_exit_clicked(self) -> None:
+        """ปุ่ม "ออกจากโปรแกรม" — ยืนยันก่อนปิด (กัน ghost touch กดโดนเอง).
+
+        ปุ่มยืนยันวางฝั่งซ้าย ปุ่มยกเลิกเป็น default ฝั่งขวา — ตำแหน่งห่างจากปุ่ม Exit
+        (มุมขวาบน) มากที่สุด → touch ที่ค้างอยู่จุดเดิมกดไม่โดนทั้งสองจุด
+        """
+        box = QMessageBox(self)
+        box.setWindowTitle("ออกจากโปรแกรม")
+        box.setIcon(QMessageBox.Warning)
+        box.setText("ต้องการปิดโปรแกรมใช่หรือไม่?")
+        box.setInformativeText("เครื่องจะหยุดตรวจชิ้นงานจนกว่าจะเปิดโปรแกรมใหม่")
+        yes = box.addButton("ปิดโปรแกรม", QMessageBox.DestructiveRole)   # ซ้ายสุด
+        no  = box.addButton("ยกเลิก", QMessageBox.RejectRole)
+        box.setDefaultButton(no)
+        box.exec()
+
+        if box.clickedButton() is yes:
+            logger.info("Kiosk: operator ยืนยันปิดโปรแกรม")
+            self._exit_authorized = True
+            self.close()
+
+    def changeEvent(self, event) -> None:
+        """เด้งกลับเต็มจอถ้าโดนย่อ (WM/ghost touch สั่ง minimize)."""
+        if (KIOSK_MODE and event.type() == QEvent.WindowStateChange
+                and self.windowState() & Qt.WindowMinimized):
+            # หน่วง 0 ms = ให้ event ปัจจุบันจบก่อนค่อยคืนสถานะ (กัน changeEvent วนซ้อน)
+            QTimer.singleShot(0, self._restore_fullscreen)
+        super().changeEvent(event)
+
+    def _restore_fullscreen(self) -> None:
+        logger.warning("Kiosk: หน้าต่างโดนย่อ — คืนเต็มจอ")
+        self.setWindowState(Qt.WindowFullScreen)
+        self.raise_()
+        self.activateWindow()
+
+    def authorize_exit(self) -> None:
+        """ปลดล็อคให้ปิดได้ — สำหรับ SIGTERM/reboot (เรียกจาก main.py)."""
+        self._exit_authorized = True
+
+    # ══════════════════════════════════════════════════════════════════════
     # Lifecycle
     # ══════════════════════════════════════════════════════════════════════
 
     def closeEvent(self, event) -> None:
-        """Clean shutdown: stop worker thread + close DB connection."""
+        """Clean shutdown: stop worker thread + close DB connection.
+
+        Kiosk mode: ปิดได้เฉพาะเมื่อ `_exit_authorized` (ปุ่มออก+ยืนยัน หรือ SIGTERM)
+        — Alt+F4 / ปุ่มปิดของ WM / ghost touch จะถูกบล็อกที่นี่
+        """
+        if KIOSK_MODE and not self._exit_authorized:
+            logger.info("Kiosk: บล็อกคำสั่งปิดโปรแกรม (ต้องกดปุ่ม 'ออกจากโปรแกรม')")
+            event.ignore()
+            return
+
         logger.info("MainWindow: closing — stopping worker...")
         self._result_timer.stop()
         self._result_timer.blockSignals(True)   # กัน timeout ค้างคิวยิง _return_to_live ตอน teardown
@@ -1371,6 +1450,24 @@ class MainWindow(QMainWindow):
             }
             #cameraBtn:pressed, #dbBtn:pressed {
                 background: #bbdefb;
+            }
+
+            /* ปุ่มออกจากโปรแกรม (kiosk) — โทนเทา ไม่ชวนกด ต่างจากปุ่มใช้งานปกติ */
+            #exitBtn {
+                background: #ffffff;
+                color: #6b7280;
+                border: 2px solid #cbd5e1;
+                border-radius: 6px;
+                font-size: 13px;
+                padding: 6px 12px;
+            }
+            #exitBtn:hover {
+                background: #fdecea;
+                border-color: #c01c28;
+                color: #c01c28;
+            }
+            #exitBtn:pressed {
+                background: #f8d7da;
             }
 
             /* ── Frame panel ──────────────────────────────────────────── */

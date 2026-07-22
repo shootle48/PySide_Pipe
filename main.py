@@ -16,13 +16,14 @@ Config (edit ui/main_window.py top section):
 from __future__ import annotations
 
 import logging
+import signal
 import sys
 import tempfile
 # import PySide6
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from PySide6.QtCore    import QLockFile
+from PySide6.QtCore    import QLockFile, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ui.main_window import MainWindow
@@ -133,6 +134,21 @@ def main() -> None:
             f"ไม่สามารถเริ่มต้นโปรแกรมได้:\n\n{exc}\n\nดู logs/app.log สำหรับรายละเอียด",
         )
         sys.exit(1)
+
+    # ── ปิดสะอาดเมื่อระบบสั่ง (reboot / shutdown / pkill) ───────────────────
+    # kiosk mode บล็อก closeEvent ไว้ → ถ้าไม่ดัก SIGTERM เครื่องจะ reboot ค้างรอแอป
+    # (Qt ไม่ประมวลผล signal ระหว่าง event loop → ใช้ QTimer เตะกลับเข้า loop ก่อนสั่งปิด)
+    def _on_term(signum, _frame) -> None:
+        logger.info("ได้รับ signal %s — ปิดโปรแกรม", signum)
+        window.authorize_exit()
+        QTimer.singleShot(0, window.close)
+
+    for _sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(_sig, _on_term)
+    # timer เปล่าทุก 500ms — ปลุก Python ให้ได้รัน signal handler (ไม่งั้นค้างใน C++ event loop)
+    _signal_wakeup = QTimer()
+    _signal_wakeup.start(500)
+    _signal_wakeup.timeout.connect(lambda: None)
 
     window.showFullScreen()
     logger.info("Startup: app ready in %.0f ms (total)", (time.perf_counter() - t_launch) * 1000)

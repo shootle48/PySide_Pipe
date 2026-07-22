@@ -1,54 +1,78 @@
 {
   "project_name": "Station Pipe Inspector | Smart-sense",
   "user_name": "Theprit",
-  "overall_pct": 70,
-  "updated_at": "2026-05-15T00:00:00+07:00",
-  "last_report_changes": [],
-  "next_week_plan": [],
+  "overall_pct": 75,
+  "updated_at": "2026-07-17T11:00:00+07:00",
+  "last_report_changes": [
+    "ระบบไฟ Job Light 2 หลอดอิสระ (relay ผ่าน RS485 DIO + ตัด/จ่ายไฟพอร์ต USB ของ Jetson) + ปุ่ม Manual 3 โหมด + auto ตามเป้า batch",
+    "ทดสอบตัดไฟ USB บน Jetson เครื่องทดสอบสำเร็จ — hub 2-1 ต้องสั่ง port 3+4 พร้อมกัน (ganged)",
+    "ทีม confirm DO bit ไฟ relay = bit 4 (register address 3) → config ลงโค้ดแล้ว (17-07)",
+    "แก้เวลาไฟล์ Export CSV เพี้ยน -7 ชม. (FAT32/UTC) — ใส่เวลา export ในชื่อไฟล์ + หัว CSV",
+    "สคริปต์ทดสอบ: test_usb_light.py (--scan) + test_job_light.py (relay + USB พร้อมกัน)"
+  ],
+  "next_week_plan": [
+    "Deploy ชุดไฟล์ล่าสุดขึ้น Jetson หน้างาน (main_window / usb_light / db_viewer / scripts ฯลฯ)",
+    "ทดสอบไฟ relay จริงที่ register 3 + ไฟ USB hub 2-1 port 3,4 ด้วย test_job_light.py",
+    "ทดสอบ end-to-end: ไฟ auto ติด/ดับตามเป้า batch หน้างานจริง",
+    "ประสานทีม Hardware เรื่องสมดุลแสงบน-ล่าง (อ่านคู่รายงานฝั่ง AI 17-07)"
+  ],
   "sections": [
     {
       "name": "Layer 1 — Setup (Calibration & Config)",
-      "progress_pct": 50,
+      "progress_pct": 55,
       "items": [
         { "label": "ตรวจ camera + health monitoring",              "status": "done",    "note": "" },
         { "label": "ตั้ง detection zone (4-point click)",          "status": "done",    "note": "" },
         { "label": "Drift detection (zone stability)",             "status": "done",    "note": "" },
         { "label": "Camera feed + Overlay + Readiness",           "status": "done",    "note": "" },
-        { "label": "Station ID",                                   "status": "blocked", "note": "รอ confirm ว่าจะใช้กับ Multi-station หรือไม่" },
+        { "label": "Station ID",                                   "status": "blocked", "note": "ค้างจาก state เก่า — เช็คสถานะจริงหลังส่งมอบ" },
         { "label": "Config file (SKU / defect scope)",             "status": "pending", "note": "" },
         { "label": "Calibration gate (บังคับ calibrate ก่อน run)", "status": "pending", "note": "" }
       ]
     },
     {
       "name": "Layer 2 — Inference (Trigger & Detection)",
-      "progress_pct": 70,
+      "progress_pct": 85,
       "items": [
         { "label": "Trigger: manual",                                   "status": "done",        "note": "" },
         { "label": "System state (Idle / Scanning / Processing / Error)","status": "done",        "note": "" },
         { "label": "Defect detection + labeling",                       "status": "done",        "note": "" },
         { "label": "Error handling (camera / inference)",               "status": "done",        "note": "" },
-        { "label": "Size classification S/M/L + auto-NG",              "status": "in_progress", "note": "รอสเปคขนาดชิ้นงานทั้ง 3 ชนิด" },
-        { "label": "RS485 output → PLC (ส่ง OK/NG)",                   "status": "pending",     "note": "รอทดสอบที่ site" },
-        { "label": "Trigger: sensor (RS485)",                           "status": "pending",     "note": "รอทดสอบที่ site" }
+        { "label": "Size classification S/M/L + auto-NG",              "status": "in_progress", "note": "ค้างจาก state เก่า — เช็คสถานะจริง" },
+        { "label": "RS485 output → PLC (ส่ง OK/NG)",                   "status": "done",        "note": "bus_lock + queue — ส่งมอบหน้างาน 2026-06-26" },
+        { "label": "Trigger: sensor (RS485)",                           "status": "done",        "note": "รันจริงหน้างานตั้งแต่ 2026-06-26" }
       ]
     },
     {
       "name": "Layer 3 — Dashboard (Monitoring & Output)",
-      "progress_pct": 89,
+      "progress_pct": 85,
       "items": [
         { "label": "Live result display + history",               "status": "done",    "note": "" },
         { "label": "Batch counter (Total / NG / Quality Rate)",   "status": "done",    "note": "" },
         { "label": "OEE Quality Rate",                            "status": "done",    "note": "" },
         { "label": "Logging ต่อเนื่อง (SQLite failsafe)",          "status": "done",    "note": "" },
-        { "label": "Export CSV",                                  "status": "done",    "note": "" },
+        { "label": "Export CSV",                                  "status": "done",    "note": "+ แก้เวลาไฟล์เพี้ยน FAT32 (17-07)" },
         { "label": "Export Dataset (ภาพ + annotations)",           "status": "done",    "note": "" },
-        { "label": "Station ID ใน log/export",                    "status": "blocked", "note": "รอชี้แจง (เชื่อมกับ Layer 1 Station ID)" }
+        { "label": "Station ID ใน log/export",                    "status": "blocked", "note": "เชื่อมกับ Layer 1 Station ID" }
+      ]
+    },
+    {
+      "name": "หลังส่งมอบ — Job Light & Site Support (ก.ค. 2026)",
+      "progress_pct": 70,
+      "items": [
+        { "label": "ไฟ Job หลอด 1 — relay ผ่าน RS485 DIO",             "status": "in_progress", "note": "โค้ด+bit พร้อม (register 3, confirm 17-07) — รอเทส relay จริงหน้างาน" },
+        { "label": "ไฟ Job หลอด 2 — USB VBUS (uhubctl)",               "status": "done",        "note": "hub 2-1 port 3+4 — เทสบนเครื่องทดสอบผ่าน" },
+        { "label": "ปุ่ม Manual 3 โหมด + auto ตามเป้า batch",           "status": "done",        "note": "AUTO → เปิดค้าง → ปิดค้าง" },
+        { "label": "สคริปต์ทดสอบไฟ (test_usb_light / test_job_light)",  "status": "done",        "note": "--scan หา port ที่ตัดไฟได้จริง" },
+        { "label": "แก้เวลา Export CSV (FAT32 timezone)",               "status": "done",        "note": "ชื่อไฟล์ + บรรทัด Export เมื่อ" },
+        { "label": "Deploy ชุดไฟล์ล่าสุดขึ้น Jetson หน้างาน",           "status": "pending",     "note": "หน้างานยังรันชุดเดิม" },
+        { "label": "RS485 burst-test (job light + sorter พร้อมกัน)",    "status": "pending",     "note": "" }
       ]
     }
   ],
   "blockers": [
-    "Station ID — รอ confirm ว่าจะใช้กับระบบ Multi-station หรือไม่",
-    "Size threshold S/M/L — รอสเปคขนาดชิ้นงานจริงจากทีม",
-    "RS485 (output + trigger) — รอนัดทดสอบที่ site กับ PLC จริง"
+    "ไฟ relay รอเทสกับ hardware จริงหน้างาน (เพิ่งได้ bit confirm 17-07)",
+    "ปัญหาสมดุลแสงหน้างาน (dimmer ไฟบนถูกถอดถาวร) — ต้องแก้ฝั่ง Hardware ; software คุมได้แค่เปิด/ปิด หรี่ไม่ได้",
+    "ชุดไฟล์ล่าสุดยังไม่ deploy ขึ้น Jetson หน้างาน"
   ]
 }

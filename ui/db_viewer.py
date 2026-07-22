@@ -881,7 +881,10 @@ class DbViewerDialog(QDialog):
         dlg.setAcceptMode(QFileDialog.AcceptSave)
         dlg.setNameFilter("CSV Files (*.csv)")
         dlg.setDefaultSuffix("csv")            # ไม่พิมพ์ .csv ก็เติมให้
-        dlg.selectFile(f"{self._current_batch}_inspections.csv")
+        # ใส่เวลา export (local) ลงชื่อไฟล์ — วันที่ของไฟล์บน USB (FAT32) เชื่อไม่ได้
+        # (Linux เขียนเป็น UTC / Windows อ่านเป็น local → เพี้ยน -7 ชม.) + กันทับไฟล์ export เก่า
+        exported_at = datetime.now().strftime("%Y%m%d_%H%M")
+        dlg.selectFile(f"{self._current_batch}_inspections_{exported_at}.csv")
         _make_touch_file_dialog(dlg)
         if dlg.exec() != QDialog.Accepted or not dlg.selectedFiles():
             return
@@ -901,6 +904,7 @@ class DbViewerDialog(QDialog):
                 # ── สรุปยอดรวม (ตรงกับ chip OK/NG ในจอ) ──────────────────
                 writer.writerow(["สรุป / Summary"])
                 writer.writerow(["Batch", self._current_batch])
+                writer.writerow(["Export เมื่อ", datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
                 writer.writerow(["Total OK", ok])
                 writer.writerow(["Total NG", ng])
                 writer.writerow(["รวม / Total", total])
